@@ -228,6 +228,8 @@ git diff upstream/main --stat     # 与上游的差异
 
 本仓库在上游 v1.8.0 基础上的改动（每条改动对应一次 commit）：
 
-- （暂无 / none yet）
+- 默认将 `~/.ssh/config` 与 Tabby 的 `config.yaml` 一起加密同步；Tabby 会从这份 OpenSSH 配置识别 `A6000` 等连接
+- 拉取 SSH 配置前创建 `.tabby-sync-backup` 备份；两端同时修改时额外保留 SSH 冲突快照，不静默覆盖
+- 构建依赖由 `node-sass` 切换为 `sass`，以支持当前 Node.js 版本
 
 All local modifications are released under the MIT License, Copyright (c) 2026 Jym2004.

@@ -168,7 +168,7 @@ class Gitlab extends Gist {
         const logger = new Logger(platform)
         const savedConfigs = SettingsHelper.readConfigFile(platform)
         const params = savedConfigs.configs as GistParams
-        const localSettingContent = SettingsHelper.readTabbyConfigFile(platform, true, true)
+        const localSettingContent = SettingsHelper.readSyncContent(platform, true)
         const component = new Gitlab(params.id, params.accessToken)
 
         if (remoteContent === null) {

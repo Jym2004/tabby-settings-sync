@@ -26,7 +26,6 @@ import { DropboxEncryptionSecretModalComponent } from './components/sub-componen
 import Logger from './utils/Logger'
 import SyncLock from './utils/sync-lock'
 import SyncState, { resolveBaselineKey } from './utils/sync-state'
-import { getLocalConfigHash } from './utils/config-hash'
 import { ToolbarButtonProvider } from 'terminus-core'
 import { CloudSyncCommandProvider, CommandProvider } from './providers/cloud-sync-command.provider'
 import { CloudSyncToolbarProvider } from './providers/cloud-sync-toolbar.provider'
@@ -37,6 +36,8 @@ let configChangeDebounceInstance = null
 let initAutoSynIntervalFrequency = CloudSyncSettingsData.defaultSyncInterval * 1000
 let consecutiveSyncFailures = 0
 let syncPausedForConflict = false
+let sshConfigPollInstance = null
+let lastObservedSshConfig = null
 
 /**
  * How long to wait after a config change before uploading. Tabby emits
@@ -84,6 +85,11 @@ export default class CloudSyncSettingsModule {
         private platform: PlatformService,
         private configService: ConfigService) {
         this.injectLoaderIndicator()
+        try {
+            lastObservedSshConfig = SettingsHelper.getLocalSshConfigHash()
+        } catch (_) {
+            lastObservedSshConfig = null
+        }
         SettingsHelper.loadEncryptionSecret().then(() => {
             return this.syncCloudSettings()
         }).then(() => {
@@ -127,6 +133,41 @@ export default class CloudSyncSettingsModule {
                 this.pushLocalConfigChange()
             }, CONFIG_CHANGE_DEBOUNCE_MS)
         })
+
+        if (sshConfigPollInstance) {
+            clearInterval(sshConfigPollInstance)
+        }
+        sshConfigPollInstance = setInterval(() => this.detectSshConfigChange(), 3000)
+    }
+
+    private detectSshConfigChange (): void {
+        const savedConfigs = SettingsHelper.readConfigFile(this.platform)
+        if (!savedConfigs?.enabled) {
+            return
+        }
+
+        let current: string
+        try {
+            current = SettingsHelper.getLocalSshConfigHash()
+        } catch (error) {
+            new Logger(this.platform).log('Unable to read the local SSH config for sync: ' + error.toString(), 'error')
+            return
+        }
+
+        if (lastObservedSshConfig === null) {
+            lastObservedSshConfig = current
+            return
+        }
+        if (current === lastObservedSshConfig) {
+            return
+        }
+
+        if (this.isTabbySyncActive() || syncPausedForConflict || SyncLock.isLocked) {
+            return
+        }
+        this.pushLocalConfigChange().catch(error => {
+            new Logger(this.platform).log('Error while syncing local SSH config change: ' + error.toString(), 'error')
+        })
     }
 
     /** Upload the local config after a debounced change event, if it really changed. */
@@ -141,13 +182,21 @@ export default class CloudSyncSettingsModule {
         }
 
         if (this.isLocalConfigAlreadySynced()) {
+            try {
+                lastObservedSshConfig = SettingsHelper.getLocalSshConfigHash()
+            } catch (_) { }
             logger.log('Config changed event received, but the local config already matches the last synced content. Skipping...')
             return
         }
 
         logger.log('Config changed. Syncing local settings to cloud...')
         this.showLoaderIndicator()
-        await SettingsHelper.syncLocalSettingsToCloud(this.platform).then(() => {
+        await SettingsHelper.syncLocalSettingsToCloud(this.platform).then((success) => {
+            if (success) {
+                try {
+                    lastObservedSshConfig = SettingsHelper.getLocalSshConfigHash()
+                } catch (_) { }
+            }
             this.hideLoaderIndicator()
         }).catch((err) => {
             this.hideLoaderIndicator()
@@ -172,7 +221,11 @@ export default class CloudSyncSettingsModule {
             return false
         }
 
-        return baseline.hash === getLocalConfigHash(this.platform)
+        try {
+            return baseline.hash === SettingsHelper.getLocalSyncHash(this.platform)
+        } catch (_) {
+            return false
+        }
     }
 
     /**
@@ -211,6 +264,9 @@ export default class CloudSyncSettingsModule {
 
         try {
             const result = await SettingsHelper.syncWithCloud(this.configService, this.platform)
+            try {
+                lastObservedSshConfig = SettingsHelper.getLocalSshConfigHash()
+            } catch (_) { }
             const message = result?.message || ''
             if (message.toLowerCase().includes('sync conflict')) {
                 syncPausedForConflict = true

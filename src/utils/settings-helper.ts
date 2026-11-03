@@ -12,9 +12,9 @@ import { EventEmitter } from '@angular/core'
 import Logger from './Logger'
 import SyncLock from './sync-lock'
 import SyncState, { resolveBaselineKey } from './sync-state'
-import { getLocalConfigHash } from './config-hash'
 import SettingsSecret from './settings-secret'
 import { decryptPayload, encryptV1, encryptV2, isV2Payload } from './settings-crypto'
+import { createSyncPayload, getOpenSshConfigPath, hashSyncContent, splitSyncPayload } from './sync-payload'
 
 const fs = require('fs')
 const path = require('path')
@@ -84,6 +84,100 @@ export class SettingsHelperClass {
         }
     }
 
+    private getSshConfigPath (): string {
+        return getOpenSshConfigPath()
+    }
+
+    getSshConfigFilePath (): string {
+        return this.getSshConfigPath()
+    }
+
+    private readSshConfig (): string {
+        const filePath = this.getSshConfigPath()
+        if (!fs.existsSync(filePath)) {
+            return ''
+        }
+        return fs.readFileSync(filePath, 'utf8')
+    }
+
+    getLocalSshConfigContent (): string {
+        return this.readSshConfig()
+    }
+
+    /** Read the combined, backward-compatible payload that is encrypted and stored in the cloud. */
+    readSyncContent (platform: PlatformService, encrypted = false): string {
+        const tabbyConfig = this.readTabbyConfigFile(platform, true, false)
+        const content = createSyncPayload(tabbyConfig, this.readSshConfig())
+        return encrypted ? this.encryptPayload(content) : content
+    }
+
+    /** Fingerprint both synced files so SSH-only edits trigger the existing sync cycle. */
+    getLocalSyncHash (platform: PlatformService): string {
+        return hashSyncContent(this.readSyncContent(platform))
+    }
+
+    getLocalSshConfigHash (): string {
+        return hashSyncContent(createSyncPayload('', this.readSshConfig()))
+    }
+
+    /** Back up the OpenSSH config before applying a cloud pull. */
+    async backupSshConfigFile (): Promise<boolean> {
+        const filePath = this.getSshConfigPath()
+        try {
+            if (!fs.existsSync(filePath)) {
+                return true
+            }
+            return await this.writeFileAsync(filePath + '.tabby-sync-backup', fs.readFileSync(filePath, 'utf8'))
+        } catch (e) {
+            return false
+        }
+    }
+
+    /** Replace the local OpenSSH config after the caller has created a backup. */
+    async applySshConfigFromSync (cloudSshConfig: string): Promise<boolean> {
+        const filePath = this.getSshConfigPath()
+        try {
+            fs.mkdirSync(path.dirname(filePath), { recursive: true })
+        } catch (e) { }
+        return this.writeFileAsync(filePath, cloudSshConfig)
+    }
+
+    async writeSshConflictSnapshot (content: string): Promise<string> {
+        const filePath = this.getSshConfigPath() + '.tabby-sync-conflict-' + Date.now()
+        return await this.writeFileAsync(filePath, content) ? filePath : null
+    }
+
+    /** Apply a cloud payload, preserving old single-file cloud content. */
+    async applySyncContent (config: ConfigService, platform: PlatformService, content: string): Promise<void> {
+        const payload = splitSyncPayload(content)
+        if (!payload.valid) {
+            throw new Error('The cloud SSH config payload is malformed; refusing to apply it.')
+        }
+        const tabbyConfigPath = path.dirname(platform.getConfigPath()) + CloudSyncSettingsData.tabbySettingsFilename
+        if (fs.existsSync(tabbyConfigPath) && !await this.backupTabbyConfigFile(platform)) {
+            throw new Error('Could not back up the local Tabby config; refusing to replace settings.')
+        }
+        const previousSshConfig = this.readSshConfig()
+        let sshUpdated = false
+        if (payload.sshConfig !== null) {
+            const backedUp = await this.backupSshConfigFile()
+            if (!backedUp) {
+                throw new Error('Could not back up the local SSH config; refusing to replace settings.')
+            }
+            if (!await this.applySshConfigFromSync(payload.sshConfig)) {
+                throw new Error('Could not write the merged SSH config.')
+            }
+            sshUpdated = true
+        }
+        if (!await this.writeTabbyConfigFile(platform, payload.tabbyConfig)) {
+            if (sshUpdated) {
+                await this.writeFileAsync(this.getSshConfigPath(), previousSshConfig)
+            }
+            throw new Error('Could not write the local Tabby config.')
+        }
+        config.writeRaw(payload.tabbyConfig)
+    }
+
     /**
      * Persist the provider configuration to disk. Existing enable/loader/
      * interval preferences are preserved when a settings file already exists.
@@ -119,14 +213,12 @@ export class SettingsHelperClass {
     }
 
     /**
-     * Encrypt the current local Tabby config and write it to the temporary
-     * upload file used by the FTP adapter.
+     * Encrypt the complete local sync payload and write it to FTP's temporary file.
      */
     async generateEncryptedTabbyFileForUpload (platform: PlatformService): Promise<boolean> {
         const filePath = path.dirname(platform.getConfigPath()) + CloudSyncSettingsData.tabbyLocalEncryptedFile
         try {
-            const tabbyConfig = this.readTabbyConfigFile(platform, true, true)
-            return await this.writeFileAsync(filePath, tabbyConfig)
+            return await this.writeFileAsync(filePath, this.readSyncContent(platform, true))
         } catch (e) {
             return false
         }
@@ -180,26 +272,27 @@ export class SettingsHelperClass {
      * Shares the same lock as {@link syncWithCloud}; when a cycle is already
      * running the push is skipped rather than racing it.
      */
-    async syncLocalSettingsToCloud (platform: PlatformService): Promise<void> {
+    async syncLocalSettingsToCloud (platform: PlatformService): Promise<boolean> {
         const savedConfigs = this.readConfigFile(platform)
         if (!savedConfigs || !this.adapterHandler[savedConfigs.adapter]) {
             PluginToast.error(CloudSyncLang.trans('sync.error_invalid_setting_2'))
-            return
+            return false
         }
 
         const logger = new Logger(platform)
-        await SyncLock.runExclusive('syncLocalSettingsToCloud', async () => {
+        return await SyncLock.runExclusive('syncLocalSettingsToCloud', async () => {
             const pushed = await this.adapterHandler[savedConfigs.adapter].syncLocalSettingsToCloud(platform)
             const ok = typeof pushed === 'boolean' ? pushed : !!pushed?.result
             if (ok) {
                 // Both sides now hold this content, so record it as the baseline
                 // to stop the next cycle from treating the upload as a change.
-                SyncState.record(platform, resolveBaselineKey(savedConfigs), getLocalConfigHash(platform))
+                SyncState.record(platform, resolveBaselineKey(savedConfigs), this.getLocalSyncHash(platform))
             }
-            return null
-        }, null).catch((err) => {
+            return ok
+        }, false).catch((err) => {
             logger.log('Forced upload failed: ' + err.toString(), 'error')
             PluginToast.error(err.toString())
+            return false
         })
     }
 

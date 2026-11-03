@@ -2,7 +2,8 @@ import { ConfigService, PlatformService } from 'terminus-core'
 import CloudSyncSettingsData from '../../data/setting-items'
 import SettingsHelper from '../settings-helper'
 import SyncState, { SyncBaseline } from '../sync-state'
-import { hashConfigContent, getLocalConfigHash, shortHash } from '../config-hash'
+import { hashConfigContent, shortHash } from '../config-hash'
+import { hashSyncContent, splitSyncPayload } from '../sync-payload'
 import CloudSyncLang from '../../data/lang'
 import Logger from '../Logger'
 import moment from 'moment'
@@ -91,20 +92,6 @@ interface LocalSnapshot {
 export { hashConfigContent }
 
 /**
- * Replace the local Tabby config with `plain` YAML.
- *
- * The file is written first and only then handed to `ConfigService.writeRaw`,
- * because `writeRaw` starts an unawaited `save()` and `load()` in parallel: if
- * the `load()` reads the file before the `save()` has written it, Tabby's
- * in-memory store silently reverts to the previous config and the pull appears
- * to have been ignored.
- */
-async function writeLocalConfig (config: ConfigService, platform: PlatformService, plain: string): Promise<void> {
-    await SettingsHelper.writeTabbyConfigFile(platform, plain)
-    config.writeRaw(plain)
-}
-
-/**
  * Apply a validated cloud config to the local file during the interactive
  * first-init flow, recording the baseline so the first background cycle sees
  * both sides as already in agreement.
@@ -119,9 +106,12 @@ export async function applyRemoteConfigOnFirstInit (
     remoteContent: string,
 ): Promise<void> {
     const remotePlain = SettingsHelper.doDescryption(remoteContent)
-    await SettingsHelper.backupTabbyConfigFile(platform)
-    await writeLocalConfig(config, platform, remotePlain)
-    SyncState.record(platform, adapterId, hashConfigContent(remotePlain))
+    await SettingsHelper.applySyncContent(config, platform, remotePlain)
+    const payload = splitSyncPayload(remotePlain)
+    const baselineHash = payload.sshConfig === null
+        ? hashConfigContent(payload.tabbyConfig)
+        : SettingsHelper.getLocalSyncHash(platform)
+    SyncState.record(platform, adapterId, baselineHash)
 }
 
 /**
@@ -130,19 +120,26 @@ export async function applyRemoteConfigOnFirstInit (
  * {@link applyRemoteConfigOnFirstInit}.
  */
 export function recordLocalBaselineOnFirstInit (platform: PlatformService, adapterId: string): void {
-    SyncState.record(platform, adapterId, getLocalConfigHash(platform))
+    SyncState.record(platform, adapterId, SettingsHelper.getLocalSyncHash(platform))
 }
 
 /** Read the local config file plus its modified time. */
 async function readLocalSnapshot (platform: PlatformService): Promise<LocalSnapshot> {
     const filePath = path.dirname(platform.getConfigPath()) + CloudSyncSettingsData.tabbySettingsFilename
     const stats = await fs.promises.stat(filePath)
-    const content = await fs.promises.readFile(filePath, 'utf8')
+    const content = SettingsHelper.readSyncContent(platform)
+    let updatedAt = moment(stats.mtime)
+    try {
+        const sshStats = await fs.promises.stat(SettingsHelper.getSshConfigFilePath())
+        if (sshStats.mtimeMs > stats.mtimeMs) {
+            updatedAt = moment(sshStats.mtime)
+        }
+    } catch (e) { }
 
     return {
         content: content,
-        hash: hashConfigContent(content),
-        updatedAt: moment(stats.mtime),
+        hash: hashSyncContent(content),
+        updatedAt,
     }
 }
 
@@ -249,15 +246,21 @@ function decideAction (
  * replaced. The write is awaited so the caller still holds the sync lock when
  * Tabby emits its `changed$` notification.
  */
-async function applyPull (options: SyncDirectionOptions, remotePlain: string, remoteHash: string): Promise<SyncOutcome> {
+async function applyPull (options: SyncDirectionOptions, remotePlain: string): Promise<SyncOutcome> {
     const { config, platform, logger, adapterId, remoteUpdatedAt } = options
 
-    await SettingsHelper.backupTabbyConfigFile(platform)
-    // The baseline is recorded *before* the write so the `changed$` handler that
-    // Tabby fires from `writeRaw` already sees the two sides as in agreement and
-    // does not push the config straight back.
-    SyncState.record(platform, adapterId, remoteHash, toIsoOrNull(remoteUpdatedAt))
-    await writeLocalConfig(config, platform, remotePlain)
+    await SettingsHelper.applySyncContent(config, platform, remotePlain)
+    const payload = splitSyncPayload(remotePlain)
+    if (payload.sshConfig === null) {
+        const migration = normalisePushResult(await options.pushToCloud())
+        if (!migration.ok) {
+            logger.log('Cloud settings were pulled, but adding the local SSH config to the cloud failed. The next sync will retry. ' + migration.message, 'error')
+            return { action: 'push', result: false, message: migration.message }
+        }
+    }
+    // Record after both files are written so the changed$ handler sees the actual
+    // local state, including the SSH config and its line endings.
+    SyncState.record(platform, adapterId, SettingsHelper.getLocalSyncHash(platform), toIsoOrNull(remoteUpdatedAt))
     logger.log('Sync direction: Cloud to local. Applied.')
 
     return { action: 'pull', result: true, message: '' }
@@ -291,16 +294,20 @@ async function applyPush (options: SyncDirectionOptions, localHash: string): Pro
  */
 async function applyConflict (options: SyncDirectionOptions, remotePlain: string): Promise<SyncOutcome> {
     const { platform, logger, providerLabel } = options
+    const payload = splitSyncPayload(remotePlain)
 
     await SettingsHelper.backupTabbyConfigFile(platform)
-    const snapshotPath = await SettingsHelper.writeConflictSnapshot(platform, remotePlain)
+    const snapshotPath = await SettingsHelper.writeConflictSnapshot(platform, payload.tabbyConfig)
+    const sshSnapshotPath = payload.sshConfig === null
+        ? null
+        : await SettingsHelper.writeSshConflictSnapshot(payload.sshConfig)
     const message = 'Sync conflict: both local and cloud configs changed. Resolve using the preserved snapshots.'
-    logger.log(`Sync conflict on ${providerLabel}: local copy preserved in config.yaml.backup; cloud copy saved to ${snapshotPath || 'nowhere (write failed)'}. No winner selected.`, 'warn')
+    logger.log(`Sync conflict on ${providerLabel}: local copy preserved in config.yaml.backup; cloud copies saved to ${snapshotPath || 'nowhere (write failed)'}${sshSnapshotPath ? ' and ' + sshSnapshotPath : ''}. No winner selected.`, 'warn')
 
     return {
         action: 'conflict',
         result: false,
-        message: message + (snapshotPath ? ' Cloud snapshot: ' + snapshotPath : ''),
+        message: message + (snapshotPath ? ' Cloud snapshot: ' + snapshotPath : '') + (sshSnapshotPath ? ' SSH snapshot: ' + sshSnapshotPath : ''),
     }
 }
 
@@ -346,29 +353,58 @@ export async function resolveSyncDirection (options: SyncDirectionOptions): Prom
     // The plugin header only proves who wrote the file, not that the payload
     // survived the trip. Parsing it here means a truncated upload or a botched
     // decryption can never reach `config.yaml`.
-    if (!isParseableConfig(remotePlain)) {
+    const remotePayload = splitSyncPayload(remotePlain)
+    if (!remotePayload.valid) {
+        logger.log(`Auto Sync ${providerLabel}: cloud SSH config payload is malformed. Refusing to apply it.`, 'error')
+        return { action: 'abort', result: false, message: CloudSyncLang.trans('common.errors.invalidServerConfig') }
+    }
+    const remoteTabbyConfig = remotePayload.tabbyConfig
+    if (!isParseableConfig(remoteTabbyConfig)) {
         logger.log(`Auto Sync ${providerLabel}: cloud config is not valid YAML after decryption. Refusing to overwrite the local config.`, 'error')
         return { action: 'abort', result: false, message: CloudSyncLang.trans('common.errors.invalidServerConfig') }
     }
 
-    const remoteHash = hashConfigContent(remotePlain)
+    const legacyRemote = remotePayload.sshConfig === null
+    const remoteHash = legacyRemote
+        ? hashConfigContent(remotePayload.tabbyConfig)
+        : hashSyncContent(remotePlain)
+    const localDecisionHash = legacyRemote
+        ? hashConfigContent(splitSyncPayload(local.content).tabbyConfig)
+        : local.hash
     const baseline = SyncState.read(platform, adapterId)
+    const localLegacyHash = hashConfigContent(splitSyncPayload(local.content).tabbyConfig)
+    const remoteLegacyHash = hashConfigContent(remotePayload.tabbyConfig)
+    const baselineDoesNotTrackSsh = !legacyRemote
+        && !!baseline?.hash
+        && baseline.hash === localLegacyHash
+        && baseline.hash === remoteLegacyHash
+    const effectiveBaseline = baselineDoesNotTrackSsh ? null : baseline
+
+    if (baselineDoesNotTrackSsh) {
+        logger.log('Existing sync baseline predates SSH config sync; applying the established cloud SSH config after creating a local backup.')
+        return applyPull(options, remotePlain)
+    }
 
     logger.log(`Auto Sync ${providerLabel} | cloud updated: ${formatForLog(remoteUpdatedAt)} | local updated: ${formatForLog(local.updatedAt)} | cloud hash: ${shortHash(remoteHash)} | local hash: ${shortHash(local.hash)} | baseline: ${shortHash(baseline?.hash)}`)
 
-    if (remoteHash === local.hash) {
+    if (legacyRemote && remoteHash === localDecisionHash) {
+        logger.log('Cloud payload predates SSH sync. Uploading the local SSH config alongside the existing Tabby config.')
+        return applyPush(options, local.hash)
+    }
+
+    if (remoteHash === localDecisionHash) {
         // Both sides already agree, so refresh the baseline and do nothing else.
-        SyncState.record(platform, adapterId, local.hash, toIsoOrNull(remoteUpdatedAt))
+        SyncState.record(platform, adapterId, SettingsHelper.getLocalSyncHash(platform), toIsoOrNull(remoteUpdatedAt))
         logger.log('Sync direction: none. Local and cloud content are identical.')
         return { action: 'noop', result: true, message: '' }
     }
 
-    const { action, reason } = decideAction(local, remoteHash, remoteUpdatedAt, baseline)
+    const { action, reason } = decideAction({ ...local, hash: localDecisionHash }, remoteHash, remoteUpdatedAt, effectiveBaseline)
     logger.log(`Sync decision: ${action} (${reason}).`)
 
     switch (action) {
         case 'pull': {
-            return applyPull(options, remotePlain, remoteHash)
+            return applyPull(options, remotePlain)
         }
 
         case 'push': {

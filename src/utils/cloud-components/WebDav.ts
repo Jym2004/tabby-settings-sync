@@ -132,7 +132,7 @@ class WebDav {
      * the shared sync lock, which the cycle already holds.
      */
     private async uploadLocalSettings (client: any, platform: PlatformService, remoteFile: string): Promise<void> {
-        await client.putFileContents(remoteFile, SettingsHelper.readTabbyConfigFile(platform, true, true), { overwrite: true })
+        await client.putFileContents(remoteFile, SettingsHelper.readSyncContent(platform, true), { overwrite: true })
     }
 
     /**

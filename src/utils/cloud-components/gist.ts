@@ -7,7 +7,7 @@ import CloudSyncLang from '../../data/lang'
 import CloudSyncSettingsData from '../../data/setting-items'
 import SettingsHelper from '../settings-helper'
 import { GistParams, SyncResult } from '../../interface'
-import { hashConfigContent } from '../config-hash'
+import { hashSyncContent } from '../sync-payload'
 import { applyRemoteConfigOnFirstInit, recordLocalBaselineOnFirstInit, resolveSyncDirection } from './sync-utils'
 
 /**
@@ -169,7 +169,7 @@ class Gist {
         const logger = new Logger(platform)
         const savedConfigs = SettingsHelper.readConfigFile(platform)
         const params = savedConfigs.configs as GistParams
-        const localSettingContent = SettingsHelper.readTabbyConfigFile(platform, true, true)
+        const localSettingContent = SettingsHelper.readSyncContent(platform, true)
         const component = this.createComponent(params.id, params.accessToken)
 
         if (!gistFiles) {
@@ -226,7 +226,7 @@ class Gist {
             return false
         }
 
-        return hashConfigContent(SettingsHelper.doDescryption(remoteContent)) === hashConfigContent(SettingsHelper.doDescryption(localContent))
+        return hashSyncContent(SettingsHelper.doDescryption(remoteContent)) === hashSyncContent(SettingsHelper.doDescryption(localContent))
     }
 
     /**

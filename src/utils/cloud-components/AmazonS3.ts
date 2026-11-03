@@ -110,7 +110,7 @@ class AmazonS3Class {
         const uploadObjectParams = {
             Bucket: resolved.bucket,
             Key: remoteFile,
-            Body: SettingsHelper.readTabbyConfigFile(platform, true, true),
+            Body: SettingsHelper.readSyncContent(platform, true),
             ACL: this.PERMISSIONS.PRIVATE,
             ContentType: 'application/json',
         }
@@ -152,7 +152,10 @@ class AmazonS3Class {
                         remoteUpdatedAt: remoteSyncConfigUpdatedAt,
                         remoteContent: content,
                         pushToCloud: async () => {
-                            await client.upload(uploadObjectParams).promise()
+                            await client.upload({
+                                ...uploadObjectParams,
+                                Body: SettingsHelper.readSyncContent(platform, true),
+                            }).promise()
                         },
                     })
                     result.result = outcome.result
@@ -217,7 +220,7 @@ class AmazonS3Class {
         const uploadObjectParams = {
             Bucket: resolved.bucket,
             Key: remoteFile,
-            Body: SettingsHelper.readTabbyConfigFile(platform, true, true),
+            Body: SettingsHelper.readSyncContent(platform, true),
             ACL: this.PERMISSIONS.PRIVATE,
             ContentType: 'application/json',
         }

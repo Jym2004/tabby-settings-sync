@@ -214,7 +214,7 @@ class DropboxSync {
             const dbx = new Dropbox({ accessToken: params.accessToken })
             await dbx.filesUpload({
                 path: remoteFile,
-                contents: SettingsHelper.readTabbyConfigFile(platform, true, true),
+                contents: SettingsHelper.readSyncContent(platform, true),
                 mode: 'overwrite' as any,
             })
             logger.log('Dropbox file upload success')
