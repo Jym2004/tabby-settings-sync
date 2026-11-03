@@ -200,3 +200,34 @@ Keep tracking of version release change logs
 
 - Initial the plugin package
 - Added Support for Amazon S3, FTP, WebDav
+
+# 上游来源 / Upstream
+
+----
+
+This repository is an independent, modified copy of
+**[niceit/tabby-cloud-sync-settings](https://github.com/niceit/tabby-cloud-sync-settings)**,
+maintained by [Jym2004](https://github.com/Jym2004).
+
+- 上游项目 / Upstream: https://github.com/niceit/tabby-cloud-sync-settings
+- 起始版本 / Starting version: **v1.8.0** (2026-09-02)
+- 上游作者 / Upstream author: TranIT.Co <tran.tuan@tranit.co>
+- 许可证 / License: MIT — 原始版权声明保留在 [LICENSE](./LICENSE) 中，未做修改
+- 详细说明 / Details: [NOTICE](./NOTICE)
+
+It is **not a GitHub fork**: this is a standalone repository, and the original
+project is added as the git remote `upstream` so upstream changes can be
+compared and merged at any time.
+
+```sh
+git fetch upstream
+git diff upstream/main --stat     # 与上游的差异
+```
+
+## 本地改动 / Local modifications
+
+本仓库在上游 v1.8.0 基础上的改动（每条改动对应一次 commit）：
+
+- （暂无 / none yet）
+
+All local modifications are released under the MIT License, Copyright (c) 2026 Jym2004.
