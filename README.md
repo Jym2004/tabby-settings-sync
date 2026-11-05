@@ -1,29 +1,29 @@
-# Tabby Cloud Settings Sync
+# Tabby 云同步设置
 
-English | [简体中文](README.zh-CN.md)
+[English](README.md) | 简体中文
 
-Sync Tabby settings and SSH connections between Windows, macOS, and Linux.
+在 Windows、macOS 和 Linux 之间同步 Tabby 设置与 SSH 连接。
 
-Based on [Tabby Sync Cloud Settings](https://github.com/niceit/tabby-cloud-sync-settings). See [NOTICE](NOTICE) for attribution.
+本项目基于上游项目 [Tabby Sync Cloud Settings](https://github.com/niceit/tabby-cloud-sync-settings)。来源说明见 [NOTICE](NOTICE)。
 
-## Key features
+## 主要功能
 
-- Syncs Tabby settings and `~/.ssh/config` together in encrypted cloud storage.
-- Keeps WSL and other machine-specific local profiles on their own devices.
-- Skips SSH entries that point back to the current computer.
-- Adapts SSH key paths for each operating system.
-- Creates local backups before applying cloud changes.
-- Supports S3-compatible storage, WebDAV, FTP/FTPS, Gists, and Dropbox.
+- 将 Tabby 设置和 `~/.ssh/config` 一起加密同步到云端。
+- WSL 等本机专属配置只保留在本机。
+- 自动跳过指向本机自身的 SSH 连接。
+- 根据操作系统适配 SSH 密钥路径。
+- 应用云端配置前自动备份本地文件。
+- 支持 S3 兼容存储、WebDAV、FTP/FTPS、Gist 和 Dropbox。
 
-## Build
+## 构建
 
-Requires Node.js and Yarn. Dropbox builds also require `DROPBOX_APP_KEY`.
+需要 Node.js 和 Yarn。构建 Dropbox 版本还需提供 `DROPBOX_APP_KEY`。
 
 ```sh
 corepack yarn install --ignore-scripts
 DROPBOX_APP_KEY=your_dropbox_app_key npm run build
 ```
 
-## License
+## 许可证
 
-MIT. See [LICENSE](LICENSE).
+MIT，详见 [LICENSE](LICENSE)。
