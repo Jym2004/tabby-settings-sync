@@ -1,6 +1,6 @@
 # Tabby Cloud Settings Sync
 
-English | [简体中文](README.zh-CN.md)
+English | [简体中文](README.md)
 
 Sync Tabby settings and SSH connections between Windows, macOS, and Linux.
 

@@ -1,6 +1,6 @@
 # Tabby 云同步设置
 
-[English](README.md) | 简体中文
+[English](README.en.md) | 简体中文
 
 在 Windows、macOS 和 Linux 之间同步 Tabby 设置与 SSH 连接。
 
