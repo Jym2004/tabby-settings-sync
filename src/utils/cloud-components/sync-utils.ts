@@ -3,7 +3,7 @@ import CloudSyncSettingsData from '../../data/setting-items'
 import SettingsHelper from '../settings-helper'
 import SyncState, { SyncBaseline } from '../sync-state'
 import { hashConfigContent, shortHash } from '../config-hash'
-import { hashSyncContent, splitSyncPayload } from '../sync-payload'
+import { hashSyncContent, splitSyncPayload, stripLocalProfiles } from '../sync-payload'
 import CloudSyncLang from '../../data/lang'
 import Logger from '../Logger'
 import moment from 'moment'
@@ -109,7 +109,7 @@ export async function applyRemoteConfigOnFirstInit (
     await SettingsHelper.applySyncContent(config, platform, remotePlain)
     const payload = splitSyncPayload(remotePlain)
     const baselineHash = payload.sshConfig === null
-        ? hashConfigContent(payload.tabbyConfig)
+        ? hashConfigContent(stripLocalProfiles(payload.tabbyConfig))
         : SettingsHelper.getLocalSyncHash(platform)
     SyncState.record(platform, adapterId, baselineHash)
 }
@@ -366,14 +366,24 @@ export async function resolveSyncDirection (options: SyncDirectionOptions): Prom
 
     const legacyRemote = remotePayload.sshConfig === null
     const remoteHash = legacyRemote
-        ? hashConfigContent(remotePayload.tabbyConfig)
+        ? hashConfigContent(stripLocalProfiles(remotePayload.tabbyConfig))
         : hashSyncContent(remotePlain)
     const localDecisionHash = legacyRemote
-        ? hashConfigContent(splitSyncPayload(local.content).tabbyConfig)
+        ? hashConfigContent(stripLocalProfiles(splitSyncPayload(local.content).tabbyConfig))
         : local.hash
-    const baseline = SyncState.read(platform, adapterId)
-    const localLegacyHash = hashConfigContent(splitSyncPayload(local.content).tabbyConfig)
-    const remoteLegacyHash = hashConfigContent(remotePayload.tabbyConfig)
+    let baseline = SyncState.read(platform, adapterId)
+    if (baseline?.hash) {
+        const localTabbyConfig = SettingsHelper.readTabbyConfigFile(platform, true, false)
+        const oldLocalHash = hashConfigContent(localTabbyConfig)
+        if (baseline.hash === oldLocalHash) {
+            baseline = {
+                ...baseline,
+                hash: hashConfigContent(stripLocalProfiles(localTabbyConfig)),
+            }
+        }
+    }
+    const localLegacyHash = hashConfigContent(stripLocalProfiles(splitSyncPayload(local.content).tabbyConfig))
+    const remoteLegacyHash = hashConfigContent(stripLocalProfiles(remotePayload.tabbyConfig))
     const baselineDoesNotTrackSsh = !legacyRemote
         && !!baseline?.hash
         && baseline.hash === localLegacyHash

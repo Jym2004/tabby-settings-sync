@@ -12,6 +12,57 @@ export interface SyncPayload {
 const SSH_CONFIG_START = '# --- TABBY CLOUD SYNC: SSH CONFIG START ---'
 const SSH_CONFIG_END = '# --- TABBY CLOUD SYNC: SSH CONFIG END ---'
 
+function parseTabbyConfig (content: string): any {
+    try {
+        const parsed = yaml.load(content || '')
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+    } catch (e) {
+        return null
+    }
+}
+
+function dumpTabbyConfig (config: any): string {
+    return yaml.dump(config, { lineWidth: -1, noRefs: true })
+}
+
+/** Exclude machine-specific local-shell profiles from the cloud copy. */
+export function stripLocalProfiles (content: string): string {
+    const config = parseTabbyConfig(content)
+    if (!config || !Array.isArray(config.profiles)) {
+        return content || ''
+    }
+
+    const profiles = config.profiles.filter(profile => profile?.type !== 'local')
+    if (profiles.length === config.profiles.length) {
+        return content || ''
+    }
+
+    return dumpTabbyConfig({ ...config, profiles })
+}
+
+/** Apply cloud settings while retaining this device's own local-shell profiles. */
+export function mergeLocalProfiles (localContent: string, cloudContent: string): string {
+    const localConfig = parseTabbyConfig(localContent)
+    const cloudConfig = parseTabbyConfig(cloudContent)
+    if (!cloudConfig) {
+        return cloudContent || ''
+    }
+
+    const localProfiles = Array.isArray(localConfig?.profiles)
+        ? localConfig.profiles.filter(profile => profile?.type === 'local')
+        : []
+    const cloudProfiles = Array.isArray(cloudConfig.profiles)
+        ? cloudConfig.profiles.filter(profile => profile?.type !== 'local')
+        : []
+    const cloudIds = new Set(cloudProfiles.map(profile => profile?.id).filter(Boolean))
+    const preservedLocalProfiles = localProfiles.filter(profile => !profile?.id || !cloudIds.has(profile.id))
+
+    return dumpTabbyConfig({
+        ...cloudConfig,
+        profiles: cloudProfiles.concat(preservedLocalProfiles),
+    })
+}
+
 /** Resolve the OpenSSH config used by Tabby's built-in OpenSSH importer. */
 export function getOpenSshConfigPath (): string {
     const configuredHome = process.platform === 'win32'
@@ -84,14 +135,12 @@ export function splitSyncPayload (content: string): SyncPayload {
 /** Include the SSH sidecar in the existing canonical config fingerprint. */
 export function hashSyncContent (content: string): string {
     const payload = splitSyncPayload(content)
+    const cloudTabbyConfig = stripLocalProfiles(payload.tabbyConfig)
     if (payload.sshConfig === null) {
-        return hashConfigContent(payload.tabbyConfig)
+        return hashConfigContent(cloudTabbyConfig)
     }
 
-    let tabbyConfig: any = payload.tabbyConfig
-    try {
-        tabbyConfig = yaml.load(payload.tabbyConfig)
-    } catch (e) { }
+    const tabbyConfig = parseTabbyConfig(cloudTabbyConfig) || cloudTabbyConfig
 
     return hashConfigContent(JSON.stringify({
         tabbyConfig,

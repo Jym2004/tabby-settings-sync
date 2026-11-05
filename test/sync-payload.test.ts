@@ -2,7 +2,9 @@ import {
     createSyncPayload,
     getOpenSshConfigPath,
     hashSyncContent,
+    mergeLocalProfiles,
     splitSyncPayload,
+    stripLocalProfiles,
 } from '../src/utils/sync-payload'
 import * as yaml from 'js-yaml'
 
@@ -47,6 +49,41 @@ describe('sync payload', () => {
         const second = createSyncPayload(tabbyConfig, 'Host A6000\n    HostName 10.0.0.2\n')
 
         expect(hashSyncContent(first)).not.toBe(hashSyncContent(second))
+    })
+
+    it('excludes local profiles from cloud content but preserves them on pull', () => {
+        const localConfig = [
+            'version: 8',
+            'profiles:',
+            '  - id: ssh:a6000',
+            '    type: ssh',
+            '    name: A6000',
+            '  - id: local:wsl-ubuntu',
+            '    type: local',
+            '    name: WSL / Ubuntu',
+        ].join('\n')
+        const cloudConfig = stripLocalProfiles(localConfig)
+        const cloudObject: any = yaml.load(cloudConfig)
+        const restored: any = yaml.load(mergeLocalProfiles(localConfig, cloudConfig))
+
+        expect(cloudObject.profiles.map(profile => profile.id)).toEqual(['ssh:a6000'])
+        expect(restored.profiles.map(profile => profile.id)).toEqual(['ssh:a6000', 'local:wsl-ubuntu'])
+    })
+
+    it('does not retain local profiles that already exist in cloud', () => {
+        const localConfig = 'profiles:\n  - id: local:wsl-ubuntu\n    type: local\n    name: Local WSL\n'
+        const cloudConfig = 'profiles:\n  - id: local:wsl-ubuntu\n    type: ssh\n    name: Shared profile\n'
+        const merged: any = yaml.load(mergeLocalProfiles(localConfig, cloudConfig))
+
+        expect(merged.profiles).toHaveLength(1)
+        expect(merged.profiles[0].type).toBe('ssh')
+    })
+
+    it('does not treat machine-local profiles as synced changes', () => {
+        const first = createSyncPayload('version: 8\nprofiles:\n  - id: local:wsl-a\n    type: local\n', 'Host A6000\n    HostName 10.0.0.1\n')
+        const second = createSyncPayload('version: 8\nprofiles:\n  - id: local:wsl-b\n    type: local\n', 'Host A6000\n    HostName 10.0.0.1\n')
+
+        expect(hashSyncContent(first)).toBe(hashSyncContent(second))
     })
 
     it('resolves the Windows OpenSSH config under the user profile', () => {

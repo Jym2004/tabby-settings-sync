@@ -14,7 +14,7 @@ import SyncLock from './sync-lock'
 import SyncState, { resolveBaselineKey } from './sync-state'
 import SettingsSecret from './settings-secret'
 import { decryptPayload, encryptV1, encryptV2, isV2Payload } from './settings-crypto'
-import { createSyncPayload, getOpenSshConfigPath, hashSyncContent, splitSyncPayload } from './sync-payload'
+import { createSyncPayload, getOpenSshConfigPath, hashSyncContent, mergeLocalProfiles, splitSyncPayload, stripLocalProfiles } from './sync-payload'
 
 const fs = require('fs')
 const path = require('path')
@@ -107,7 +107,7 @@ export class SettingsHelperClass {
     /** Read the combined, backward-compatible payload that is encrypted and stored in the cloud. */
     readSyncContent (platform: PlatformService, encrypted = false): string {
         const tabbyConfig = this.readTabbyConfigFile(platform, true, false)
-        const content = createSyncPayload(tabbyConfig, this.readSshConfig())
+        const content = createSyncPayload(stripLocalProfiles(tabbyConfig), this.readSshConfig())
         return encrypted ? this.encryptPayload(content) : content
     }
 
@@ -154,6 +154,8 @@ export class SettingsHelperClass {
             throw new Error('The cloud SSH config payload is malformed; refusing to apply it.')
         }
         const tabbyConfigPath = path.dirname(platform.getConfigPath()) + CloudSyncSettingsData.tabbySettingsFilename
+        const localTabbyConfig = this.readTabbyConfigFile(platform, true, false)
+        const tabbyConfigToApply = mergeLocalProfiles(localTabbyConfig, payload.tabbyConfig)
         if (fs.existsSync(tabbyConfigPath) && !await this.backupTabbyConfigFile(platform)) {
             throw new Error('Could not back up the local Tabby config; refusing to replace settings.')
         }
@@ -169,13 +171,13 @@ export class SettingsHelperClass {
             }
             sshUpdated = true
         }
-        if (!await this.writeTabbyConfigFile(platform, payload.tabbyConfig)) {
+        if (!await this.writeTabbyConfigFile(platform, tabbyConfigToApply)) {
             if (sshUpdated) {
                 await this.writeFileAsync(this.getSshConfigPath(), previousSshConfig)
             }
             throw new Error('Could not write the local Tabby config.')
         }
-        config.writeRaw(payload.tabbyConfig)
+        config.writeRaw(tabbyConfigToApply)
     }
 
     /**
