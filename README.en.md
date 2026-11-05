@@ -15,9 +15,23 @@ Based on [Tabby Sync Cloud Settings](https://github.com/niceit/tabby-cloud-sync-
 - Creates local backups before applying cloud changes.
 - Supports S3-compatible storage, WebDAV, FTP/FTPS, Gists, and Dropbox.
 
+## Install a local build
+
+Tabby's Plugins search uses the npm registry; it does not search GitHub repositories. Until this version is published under its own npm package name, search results will show the upstream package, not this modified build.
+
+From the repository root, build and install into Tabby's user plugin directory:
+
+```powershell
+corepack yarn install --ignore-scripts
+npm run build:local
+npm install --prefix "$env:APPDATA\tabby\plugins" .
+```
+
+Restart Tabby after installation. `build:local` omits Dropbox OAuth. To enable Dropbox, set your own `DROPBOX_APP_KEY` and run `npm run build`.
+
 ## Build
 
-Requires Node.js and Yarn. Dropbox builds also require `DROPBOX_APP_KEY`.
+Requires Node.js and Yarn. Use `npm run build:local` for a local build; Dropbox builds require your own `DROPBOX_APP_KEY`.
 
 ```sh
 corepack yarn install --ignore-scripts

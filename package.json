@@ -9,6 +9,7 @@
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
   "scripts": {
+    "build:local": "node --openssl-legacy-provider node_modules/webpack/bin/webpack.js --progress --color --mode=production",
     "build": "node scripts/validate-publish-env.js && node --openssl-legacy-provider node_modules/webpack/bin/webpack.js --progress --color --mode=production",
     "watch": "node scripts/validate-publish-env.js && node --openssl-legacy-provider node_modules/webpack/bin/webpack.js --progress --color --watch",
     "prepublishOnly": "npm run build --mode=production",
