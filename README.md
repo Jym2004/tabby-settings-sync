@@ -13,21 +13,19 @@
 - 自动跳过指向本机自身的 SSH 连接。
 - 根据操作系统适配 SSH 密钥路径。
 - 应用云端配置前自动备份本地文件。
-- 支持 S3 兼容存储、WebDAV、FTP/FTPS、Gist 和 Dropbox。
+- 支持 S3 兼容存储、WebDAV、FTP/FTPS 和 Gist；Dropbox 需要自己在构建时提供 `DROPBOX_APP_KEY`
 
-## 本地安装
+## 安装
 
-Tabby 的插件搜索使用 npm 仓库，不会搜索 GitHub 仓库。此版本尚未以独立 npm 包发布前，在 Tabby 中搜索到的会是上游版本，而不是这里修改的版本。
+在 Tabby 中打开 **Settings → Plugins**，搜索 `Cloud Settings Sync Plus`，点击安装并重启 Tabby。
 
-在本仓库根目录执行以下命令，即可本地构建并安装到 Tabby 插件目录：
+也可以在 Tabby 的插件目录执行：
 
 ```powershell
-corepack yarn install --ignore-scripts
-npm run build:local
-npm install --prefix "$env:APPDATA\tabby\plugins" .
+npm install --prefix "$env:APPDATA\tabby\plugins" terminus-cloud-settings-sync-plus
 ```
 
-安装后重启 Tabby。`build:local` 不包含 Dropbox OAuth；如需 Dropbox 支持，设置自己的 `DROPBOX_APP_KEY` 后运行 `npm run build`。
+npm 包名：`terminus-cloud-settings-sync-plus`。
 
 ## 构建
 

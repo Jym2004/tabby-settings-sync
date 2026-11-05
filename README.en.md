@@ -13,21 +13,19 @@ Based on [Tabby Sync Cloud Settings](https://github.com/niceit/tabby-cloud-sync-
 - Skips SSH entries that point back to the current computer.
 - Adapts SSH key paths for each operating system.
 - Creates local backups before applying cloud changes.
-- Supports S3-compatible storage, WebDAV, FTP/FTPS, Gists, and Dropbox.
+- Supports S3-compatible storage, WebDAV, FTP/FTPS, and Gists. Dropbox requires your own `DROPBOX_APP_KEY` at build time.
 
-## Install a local build
+## Install
 
-Tabby's Plugins search uses the npm registry; it does not search GitHub repositories. Until this version is published under its own npm package name, search results will show the upstream package, not this modified build.
+Open **Settings → Plugins** in Tabby, search for `Cloud Settings Sync Plus`, install it, then restart Tabby.
 
-From the repository root, build and install into Tabby's user plugin directory:
+You can also install it from the command line in Tabby's plugin directory:
 
 ```powershell
-corepack yarn install --ignore-scripts
-npm run build:local
-npm install --prefix "$env:APPDATA\tabby\plugins" .
+npm install --prefix "$env:APPDATA\tabby\plugins" terminus-cloud-settings-sync-plus
 ```
 
-Restart Tabby after installation. `build:local` omits Dropbox OAuth. To enable Dropbox, set your own `DROPBOX_APP_KEY` and run `npm run build`.
+npm package: `terminus-cloud-settings-sync-plus`.
 
 ## Build
 

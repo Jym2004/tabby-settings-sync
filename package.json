@@ -1,8 +1,8 @@
 {
-  "name": "terminus-cloud-settings-sync",
-  "version": "1.8.0",
-  "date": "02-09-2026",
-  "description": "Cloud Services sync the Tabby config and connections across platform devices.",
+  "name": "terminus-cloud-settings-sync-plus",
+  "version": "1.0.0",
+  "date": "06-11-2026",
+  "description": "Sync Tabby settings and SSH connections across Windows, macOS and Linux.",
   "keywords": [
     "terminus-plugin"
   ],
@@ -12,7 +12,7 @@
     "build:local": "node --openssl-legacy-provider node_modules/webpack/bin/webpack.js --progress --color --mode=production",
     "build": "node scripts/validate-publish-env.js && node --openssl-legacy-provider node_modules/webpack/bin/webpack.js --progress --color --mode=production",
     "watch": "node scripts/validate-publish-env.js && node --openssl-legacy-provider node_modules/webpack/bin/webpack.js --progress --color --watch",
-    "prepublishOnly": "npm run build --mode=production",
+    "prepublishOnly": "npm run build:local",
     "lint": "eslint --ext ts */src */lib",
     "test": "jest",
     "postbuild": "node scripts/postbuild.js"
@@ -24,11 +24,11 @@
       "README.md",
       "README.en.md"
   ],
-  "author": "TranIT - tran.tuan@tranit.co",
+  "author": "Jym2004",
   "contributors": [
-    "Jym2004 (modifications since v1.8.0)"
+    "TranIT - tran.tuan@tranit.co (upstream)"
   ],
-  "support_url": "https://tabby-sync.github.io/",
+  "support_url": "https://github.com/Jym2004/tabby-settings-sync#readme",
   "github_url": "https://github.com/Jym2004/tabby-settings-sync",
   "license": "MIT",
   "devDependencies": {
@@ -94,5 +94,5 @@
   "bugs": {
     "url": "https://github.com/Jym2004/tabby-settings-sync/issues"
   },
-  "homepage": "https://tabby-sync.github.io/"
+  "homepage": "https://github.com/Jym2004/tabby-settings-sync#readme"
 }

@@ -61,29 +61,7 @@ const CloudSyncSettingsData = {
         LOGIN: 'Login',
         RESET_PASSWORD: 'ResetPassword',
     },
-    availablePluginVersions: [
-        '1.6.5',
-        '1.6.0',
-        '1.5.2',
-        '1.5.1',
-        '1.5.0',
-        '1.4.3',
-        '1.4.2',
-        '1.4.1',
-        '1.4.0',
-        '1.3.0',
-        '1.2.21',
-        '1.2.2',
-        '1.2.1',
-        '1.2.0',
-        '1.1.3',
-        '1.1.2',
-        '1.1.1',
-        '1.1.0',
-        '1.0.6',
-        '1.0.5',
-        '1.0.4',
-    ],
+    availablePluginVersions: [],
     formData: {
         [providerConstantItems.BUILT_IN]: {
             email: '',
@@ -154,8 +132,8 @@ const CloudSyncSettingsData = {
     external_urls: {
         ApiUrl: API_URL,
         BlackBlazeHelp: API_URL + '/how-to-get-blackblaze-regtion-code/',
-        checkForUpdateUrl: 'https://registry.npmjs.org/terminus-cloud-settings-sync',
-        githubIssuesUrl: 'https://github.com/niceit/tabby-cloud-sync-settings/issues',
+        checkForUpdateUrl: 'https://registry.npmjs.org/terminus-cloud-settings-sync-plus',
+        githubIssuesUrl: 'https://github.com/Jym2004/tabby-settings-sync/issues',
     },
     isCloudStorageS3Compatibility (provider: string): boolean {
         return amazonS3CompatibilityInstances.includes(provider)
@@ -172,6 +150,6 @@ const CloudSyncSettingsData = {
 
     },
     donationUrl: 'https://donorbox.org/tabby-cloud-sync-settings-donation',
-    pluginUrl: 'https://tabby-sync.github.io/',
+    pluginUrl: 'https://github.com/Jym2004/tabby-settings-sync',
 }
 export default CloudSyncSettingsData
