@@ -1,4 +1,7 @@
-This project contains code originally distributed under the MIT License.
-The original copyright and permission notice is preserved in LICENSE.
+Based on Tabby Sync Cloud Settings:
+https://github.com/niceit/tabby-cloud-sync-settings
+
+The upstream project is distributed under the MIT License. Its original
+copyright and permission notice is preserved in LICENSE.
 
 Copyright (c) 2026 Jym2004 for modifications made in this repository.

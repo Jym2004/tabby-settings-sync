@@ -4,6 +4,8 @@ English | [简体中文](README.zh-CN.md)
 
 Sync Tabby settings and SSH connections between Windows, macOS, and Linux.
 
+Based on [Tabby Sync Cloud Settings](https://github.com/niceit/tabby-cloud-sync-settings). See [NOTICE](NOTICE) for attribution.
+
 ## Key features
 
 - Syncs Tabby settings and `~/.ssh/config` together in encrypted cloud storage.

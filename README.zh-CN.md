@@ -4,6 +4,8 @@
 
 在 Windows、macOS 和 Linux 之间同步 Tabby 设置与 SSH 连接。
 
+本项目基于上游项目 [Tabby Sync Cloud Settings](https://github.com/niceit/tabby-cloud-sync-settings)。来源说明见 [NOTICE](NOTICE)。
+
 ## 主要功能
 
 - 将 Tabby 设置和 `~/.ssh/config` 一起加密同步到云端。
