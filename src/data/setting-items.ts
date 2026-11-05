@@ -149,7 +149,7 @@ const CloudSyncSettingsData = {
         gitlab: 'https://gitlab.com/api/v4/snippets',
 
     },
-    donationUrl: 'https://donorbox.org/tabby-cloud-sync-settings-donation',
+    donationUrl: '',
     pluginUrl: 'https://github.com/Jym2004/tabby-settings-sync',
 }
 export default CloudSyncSettingsData

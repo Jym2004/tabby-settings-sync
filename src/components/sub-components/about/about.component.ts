@@ -23,7 +23,6 @@ export class CloudSyncAboutComponent implements OnInit {
         author: 'Author: ' + packageAuthor,
         support_url: 'Plugin page: ' + this.supportUrl,
         github_url: 'GitHub: ' + this.githubUrl,
-        buy_me_a_cafe: 'Buy me a coffee',
         version: 'Version ' + packageVersion + ' — released ' + packageReleaseDate,
     }
 
@@ -57,7 +56,6 @@ export class CloudSyncAboutComponent implements OnInit {
             author: 'Author: ' + author,
             support_url: 'Plugin page: ' + this.supportUrl,
             github_url: 'GitHub: ' + this.githubUrl,
-            buy_me_a_cafe: 'Buy me a coffee',
             version: 'Version ' + packageVersion + ' — released ' + packageReleaseDate,
         }
     }
@@ -68,9 +66,5 @@ export class CloudSyncAboutComponent implements OnInit {
 
     openGitHubUrl (): void {
         this.platform.openExternal(this.githubUrl)
-    }
-
-    openDonationPage (): void {
-        this.platform.openExternal(CloudSyncSettingsData.donationUrl)
     }
 }
