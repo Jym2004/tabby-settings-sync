@@ -119,12 +119,13 @@ describe('sync payload', () => {
         const cloudConfig = normaliseSshConfigPaths([
             'Host A6000',
             '    HostName 10.0.0.1',
-            '    IdentityFile C:\\Users\\jym\\.ssh\\id_ed25519',
+            '    IdentityFile "C:\\Users\\jym\\.ssh\\my key" # primary key',
         ].join('\n'))
 
-        expect(cloudConfig).toContain('IdentityFile ~/.ssh/id_ed25519')
-        expect(expandSshConfigPaths(cloudConfig)).toContain('IdentityFile ')
-        expect(expandSshConfigPaths(cloudConfig)).not.toContain('~/.ssh/id_ed25519')
+        expect(cloudConfig).toContain('IdentityFile "~/.ssh/my key"')
+        expect(cloudConfig).toContain('" # primary key')
+        expect(expandSshConfigPaths(cloudConfig)).not.toContain('IdentityFile "~/')
+        expect(expandSshConfigPaths(cloudConfig)).toContain('" # primary key')
     })
 
     it('makes Tabby SSH profile key paths portable across operating systems', () => {

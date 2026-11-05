@@ -54,6 +54,7 @@ export interface StoredSettings {
     enabled: boolean,
     showLoader: boolean,
     interval_insync: number,
+    excludedSshBlocksByTarget?: Record<string, Array<{ key: string, lines: string[] }>>,
     configs: any,
 }
 

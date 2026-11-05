@@ -36,7 +36,7 @@ function normaliseLocalPath (value: string): string {
         return value
     }
 
-    const cleaned = value.trim().replace(/^["']|["']$/g, '').replace(/\\/g, '/')
+    const cleaned = value.trim().replace(/\\/g, '/')
     const home = os.homedir().replace(/\\/g, '/').replace(/\/$/, '')
     if (cleaned.toLowerCase().startsWith(home.toLowerCase() + '/')) {
         return '~/' + cleaned.slice(home.length + 1)
@@ -70,6 +70,41 @@ function expandLocalPath (value: string): string {
     }
 
     return value.replace(/\\/g, '/')
+}
+
+function mapSshConfigPathDirective (line: string, mapper: (value: string) => string): string {
+    const directive = line.match(/^(\s*(?:IdentityFile|CertificateFile)\s+)(.*)$/i)
+    if (!directive) {
+        return line
+    }
+
+    const value = directive[2]
+    const leading = value.match(/^\s*/)[0]
+    const operand = value.slice(leading.length)
+    const quote = operand[0] === '"' || operand[0] === "'" ? operand[0] : ''
+    let target: string
+    let suffix: string
+
+    if (quote) {
+        const closingQuote = operand.indexOf(quote, 1)
+        if (closingQuote < 0) {
+            return line
+        }
+        target = operand.slice(1, closingQuote)
+        suffix = operand.slice(closingQuote + 1)
+    } else {
+        const token = operand.match(/^(\S+)(.*)$/)
+        if (!token) {
+            return line
+        }
+        target = token[1]
+        suffix = token[2]
+    }
+
+    const mapped = mapper(target)
+    const outputQuote = quote || (mapped.includes(' ') ? '"' : '')
+    const formatted = outputQuote ? outputQuote + mapped + outputQuote : mapped
+    return directive[1] + leading + formatted + suffix
 }
 
 function mapProfilePaths (config: any, mapper: (value: string) => string): any {
@@ -131,16 +166,14 @@ export function expandTabbyConfigPaths (content: string): string {
 /** Make IdentityFile/CertificateFile paths portable in OpenSSH config. */
 export function normaliseSshConfigPaths (content: string): string {
     return (content || '').replace(/\r\n/g, '\n').split('\n').map(line => {
-        const match = line.match(/^(\s*(?:IdentityFile|CertificateFile)\s+)(.+)$/i)
-        return match ? match[1] + normaliseLocalPath(match[2]) : line
+        return mapSshConfigPathDirective(line, normaliseLocalPath)
     }).join('\n')
 }
 
 /** Expand `~` key paths for the local operating system before writing OpenSSH config. */
 export function expandSshConfigPaths (content: string): string {
     return (content || '').replace(/\r\n/g, '\n').split('\n').map(line => {
-        const match = line.match(/^(\s*(?:IdentityFile|CertificateFile)\s+)(.+)$/i)
-        return match ? match[1] + expandLocalPath(match[2]) : line
+        return mapSshConfigPathDirective(line, expandLocalPath)
     }).join('\n')
 }
 
