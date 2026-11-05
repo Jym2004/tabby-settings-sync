@@ -9,6 +9,11 @@ export interface SyncPayload {
     valid: boolean,
 }
 
+export interface SshConfigBlock {
+    key: string,
+    lines: string[],
+}
+
 const SSH_CONFIG_START = '# --- TABBY CLOUD SYNC: SSH CONFIG START ---'
 const SSH_CONFIG_END = '# --- TABBY CLOUD SYNC: SSH CONFIG END ---'
 
@@ -23,6 +28,105 @@ function parseTabbyConfig (content: string): any {
 
 function dumpTabbyConfig (config: any): string {
     return yaml.dump(config, { lineWidth: -1, noRefs: true })
+}
+
+/** Addresses and names that identify this computer rather than a remote host. */
+export function getLocalHostIdentifiers (): Set<string> {
+    const identifiers = new Set<string>(['localhost', '127.0.0.1', '::1'])
+    try {
+        identifiers.add(os.hostname().toLowerCase())
+    } catch (e) { }
+
+    const interfaces = os.networkInterfaces()
+    for (const name of Object.keys(interfaces)) {
+        for (const address of interfaces[name] || []) {
+            if (address?.address) {
+                identifiers.add(address.address.toLowerCase())
+            }
+        }
+    }
+
+    return identifiers
+}
+
+function splitSshSections (content: string): { preamble: string[], blocks: SshConfigBlock[] } {
+    const preamble: string[] = []
+    const blocks: SshConfigBlock[] = []
+    let current: SshConfigBlock = null
+
+    for (const line of (content || '').replace(/\r\n/g, '\n').split('\n')) {
+        const host = line.match(/^\s*Host\s+(.+?)\s*$/i)
+        const match = line.match(/^\s*Match\s+(.+?)\s*$/i)
+        if (host || match) {
+            const aliases = host
+                ? host[1].toLowerCase().split(/\s+/).sort().join(' ')
+                : match[1].toLowerCase().replace(/\s+/g, ' ')
+            current = { key: (host ? 'host:' : 'match:') + aliases, lines: [line] }
+            blocks.push(current)
+        } else if (current) {
+            current.lines.push(line)
+        } else {
+            preamble.push(line)
+        }
+    }
+
+    return { preamble, blocks }
+}
+
+function isSelfReferencingBlock (block: SshConfigBlock, identifiers: Set<string>): boolean {
+    const aliases = block.key.replace(/^host:/, '').split(' ')
+    const hostNames = block.lines
+        .map(line => line.match(/^\s*HostName\s+(\S+)/i))
+        .filter(Boolean)
+        .map(match => match[1].replace(/^["']|["']$/g, '').toLowerCase())
+
+    const targets = hostNames.length ? hostNames : aliases
+    return targets.some(target => identifiers.has(target))
+}
+
+/** Remove cloud Host blocks that point at this computer; return them for re-uploading. */
+export function excludeSelfReferencingSshConfig (cloudConfig: string, identifiers = getLocalHostIdentifiers()): { config: string, excluded: SshConfigBlock[] } {
+    const { preamble, blocks } = splitSshSections(cloudConfig)
+    const kept: SshConfigBlock[] = []
+    const excluded: SshConfigBlock[] = []
+    for (const block of blocks) {
+        if (isSelfReferencingBlock(block, identifiers)) {
+            excluded.push(block)
+        } else {
+            kept.push(block)
+        }
+    }
+
+    const lines = preamble.slice()
+    for (const block of kept) {
+        lines.push(...block.lines)
+    }
+
+    return {
+        config: lines.join('\n').replace(/\n*$/, '\n'),
+        excluded,
+    }
+}
+
+/** Put excluded cloud blocks back when uploading so other devices keep their connections. */
+export function restoreExcludedSshBlocks (localConfig: string, excluded: SshConfigBlock[]): string {
+    if (!excluded?.length) {
+        return localConfig || ''
+    }
+
+    const { preamble, blocks } = splitSshSections(localConfig)
+    const localKeys = new Set(blocks.map(block => block.key))
+    const lines = preamble.slice()
+    for (const block of blocks) {
+        lines.push(...block.lines)
+    }
+    for (const block of excluded) {
+        if (!localKeys.has(block.key)) {
+            lines.push(...block.lines)
+        }
+    }
+
+    return lines.join('\n').replace(/\n*$/, '\n')
 }
 
 /** Exclude machine-specific local-shell profiles from the cloud copy. */

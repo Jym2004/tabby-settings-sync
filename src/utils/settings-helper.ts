@@ -14,7 +14,7 @@ import SyncLock from './sync-lock'
 import SyncState, { resolveBaselineKey } from './sync-state'
 import SettingsSecret from './settings-secret'
 import { decryptPayload, encryptV1, encryptV2, isV2Payload } from './settings-crypto'
-import { createSyncPayload, getOpenSshConfigPath, hashSyncContent, mergeLocalProfiles, splitSyncPayload, stripLocalProfiles } from './sync-payload'
+import { createSyncPayload, excludeSelfReferencingSshConfig, getOpenSshConfigPath, hashSyncContent, mergeLocalProfiles, restoreExcludedSshBlocks, SshConfigBlock, splitSyncPayload, stripLocalProfiles } from './sync-payload'
 
 const fs = require('fs')
 const path = require('path')
@@ -104,10 +104,39 @@ export class SettingsHelperClass {
         return this.readSshConfig()
     }
 
+    private getExcludedSshBlocksPath (platform: PlatformService): string {
+        return path.dirname(platform.getConfigPath()) + '/sync-excluded-ssh-hosts.json'
+    }
+
+    private readExcludedSshBlocks (platform: PlatformService): SshConfigBlock[] {
+        const filePath = this.getExcludedSshBlocksPath(platform)
+        if (!fs.existsSync(filePath)) {
+            return []
+        }
+
+        try {
+            const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+            return Array.isArray(parsed)
+                ? parsed.filter(block => typeof block?.key === 'string' && Array.isArray(block?.lines))
+                : []
+        } catch (e) {
+            return []
+        }
+    }
+
+    private writeExcludedSshBlocks (platform: PlatformService, blocks: SshConfigBlock[]): void {
+        try {
+            fs.writeFileSync(this.getExcludedSshBlocksPath(platform), JSON.stringify(blocks, null, 2))
+        } catch (e) {
+            // The cache only prevents re-uploading excluded hosts; failing to write it is not fatal.
+        }
+    }
+
     /** Read the combined, backward-compatible payload that is encrypted and stored in the cloud. */
     readSyncContent (platform: PlatformService, encrypted = false): string {
         const tabbyConfig = this.readTabbyConfigFile(platform, true, false)
-        const content = createSyncPayload(stripLocalProfiles(tabbyConfig), this.readSshConfig())
+        const sshConfig = restoreExcludedSshBlocks(this.readSshConfig(), this.readExcludedSshBlocks(platform))
+        const content = createSyncPayload(stripLocalProfiles(tabbyConfig), sshConfig)
         return encrypted ? this.encryptPayload(content) : content
     }
 
@@ -162,13 +191,15 @@ export class SettingsHelperClass {
         const previousSshConfig = this.readSshConfig()
         let sshUpdated = false
         if (payload.sshConfig !== null) {
+            const filtered = excludeSelfReferencingSshConfig(payload.sshConfig)
             const backedUp = await this.backupSshConfigFile()
             if (!backedUp) {
                 throw new Error('Could not back up the local SSH config; refusing to replace settings.')
             }
-            if (!await this.applySshConfigFromSync(payload.sshConfig)) {
+            if (!await this.applySshConfigFromSync(filtered.config)) {
                 throw new Error('Could not write the merged SSH config.')
             }
+            this.writeExcludedSshBlocks(platform, filtered.excluded)
             sshUpdated = true
         }
         if (!await this.writeTabbyConfigFile(platform, tabbyConfigToApply)) {
@@ -555,6 +586,7 @@ export class SettingsHelperClass {
         const artifactPaths = [
             this.getStoredSettingsPath(platform) + '.v1-backup',
             configDirectory + CloudSyncSettingsData.tabbyLocalEncryptedFile,
+            this.getExcludedSshBlocksPath(platform),
         ]
 
         for (const artifactPath of artifactPaths) {

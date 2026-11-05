@@ -1,8 +1,10 @@
 import {
     createSyncPayload,
+    excludeSelfReferencingSshConfig,
     getOpenSshConfigPath,
     hashSyncContent,
     mergeLocalProfiles,
+    restoreExcludedSshBlocks,
     splitSyncPayload,
     stripLocalProfiles,
 } from '../src/utils/sync-payload'
@@ -88,5 +90,24 @@ describe('sync payload', () => {
 
     it('resolves the Windows OpenSSH config under the user profile', () => {
         expect(getOpenSshConfigPath().toLowerCase()).toContain('\\.ssh\\config')
+    })
+
+    it('excludes a cloud Host that points at this computer and keeps it for re-upload', () => {
+        const cloudConfig = [
+            'Host A6000',
+            '    HostName 10.0.0.1',
+            '',
+            'Host Self',
+            '    HostName 192.168.1.50',
+            '    User jh',
+        ].join('\n')
+        const identifiers = new Set(['192.168.1.50', 'localhost'])
+
+        const filtered = excludeSelfReferencingSshConfig(cloudConfig, identifiers)
+
+        expect(filtered.config).toContain('Host A6000')
+        expect(filtered.config).not.toContain('Host Self')
+        expect(filtered.excluded).toHaveLength(1)
+        expect(restoreExcludedSshBlocks(filtered.config, filtered.excluded)).toContain('Host Self')
     })
 })
