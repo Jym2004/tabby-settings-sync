@@ -14,7 +14,7 @@ import SyncLock from './sync-lock'
 import SyncState, { resolveBaselineKey } from './sync-state'
 import SettingsSecret from './settings-secret'
 import { decryptPayload, encryptV1, encryptV2, isV2Payload } from './settings-crypto'
-import { createSyncPayload, excludeSelfReferencingSshConfig, getOpenSshConfigPath, hashSyncContent, mergeLocalProfiles, restoreExcludedSshBlocks, SshConfigBlock, splitSyncPayload, stripLocalProfiles } from './sync-payload'
+import { createSyncPayload, excludeSelfReferencingSshConfig, expandSshConfigPaths, expandTabbyConfigPaths, getOpenSshConfigPath, hashSyncContent, mergeLocalProfiles, normaliseSshConfigPaths, normaliseTabbyConfigPaths, restoreExcludedSshBlocks, SshConfigBlock, splitSyncPayload, stripLocalProfiles } from './sync-payload'
 
 const fs = require('fs')
 const path = require('path')
@@ -136,7 +136,10 @@ export class SettingsHelperClass {
     readSyncContent (platform: PlatformService, encrypted = false): string {
         const tabbyConfig = this.readTabbyConfigFile(platform, true, false)
         const sshConfig = restoreExcludedSshBlocks(this.readSshConfig(), this.readExcludedSshBlocks(platform))
-        const content = createSyncPayload(stripLocalProfiles(tabbyConfig), sshConfig)
+        const content = createSyncPayload(
+            normaliseTabbyConfigPaths(stripLocalProfiles(tabbyConfig)),
+            normaliseSshConfigPaths(sshConfig),
+        )
         return encrypted ? this.encryptPayload(content) : content
     }
 
@@ -184,7 +187,7 @@ export class SettingsHelperClass {
         }
         const tabbyConfigPath = path.dirname(platform.getConfigPath()) + CloudSyncSettingsData.tabbySettingsFilename
         const localTabbyConfig = this.readTabbyConfigFile(platform, true, false)
-        const tabbyConfigToApply = mergeLocalProfiles(localTabbyConfig, payload.tabbyConfig)
+        const tabbyConfigToApply = expandTabbyConfigPaths(mergeLocalProfiles(localTabbyConfig, payload.tabbyConfig))
         if (fs.existsSync(tabbyConfigPath) && !await this.backupTabbyConfigFile(platform)) {
             throw new Error('Could not back up the local Tabby config; refusing to replace settings.')
         }
@@ -192,11 +195,12 @@ export class SettingsHelperClass {
         let sshUpdated = false
         if (payload.sshConfig !== null) {
             const filtered = excludeSelfReferencingSshConfig(payload.sshConfig)
+            const sshConfigToApply = expandSshConfigPaths(filtered.config)
             const backedUp = await this.backupSshConfigFile()
             if (!backedUp) {
                 throw new Error('Could not back up the local SSH config; refusing to replace settings.')
             }
-            if (!await this.applySshConfigFromSync(filtered.config)) {
+            if (!await this.applySshConfigFromSync(sshConfigToApply)) {
                 throw new Error('Could not write the merged SSH config.')
             }
             this.writeExcludedSshBlocks(platform, filtered.excluded)

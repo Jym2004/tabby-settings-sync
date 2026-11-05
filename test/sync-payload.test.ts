@@ -1,9 +1,13 @@
 import {
     createSyncPayload,
     excludeSelfReferencingSshConfig,
+    expandSshConfigPaths,
+    expandTabbyConfigPaths,
     getOpenSshConfigPath,
     hashSyncContent,
     mergeLocalProfiles,
+    normaliseSshConfigPaths,
+    normaliseTabbyConfigPaths,
     restoreExcludedSshBlocks,
     splitSyncPayload,
     stripLocalProfiles,
@@ -109,5 +113,34 @@ describe('sync payload', () => {
         expect(filtered.config).not.toContain('Host Self')
         expect(filtered.excluded).toHaveLength(1)
         expect(restoreExcludedSshBlocks(filtered.config, filtered.excluded)).toContain('Host Self')
+    })
+
+    it('makes SSH key paths portable across operating systems', () => {
+        const cloudConfig = normaliseSshConfigPaths([
+            'Host A6000',
+            '    HostName 10.0.0.1',
+            '    IdentityFile C:\\Users\\jym\\.ssh\\id_ed25519',
+        ].join('\n'))
+
+        expect(cloudConfig).toContain('IdentityFile ~/.ssh/id_ed25519')
+        expect(expandSshConfigPaths(cloudConfig)).toContain('IdentityFile ')
+        expect(expandSshConfigPaths(cloudConfig)).not.toContain('~/.ssh/id_ed25519')
+    })
+
+    it('makes Tabby SSH profile key paths portable across operating systems', () => {
+        const localConfig = [
+            'profiles:',
+            '  - id: ssh:a6000',
+            '    type: ssh',
+            '    name: A6000',
+            '    options:',
+            '      host: 10.0.0.1',
+            '      privateKeys:',
+            '        - C:\\Users\\jym\\.ssh\\id_ed25519',
+        ].join('\n')
+        const cloudConfig = normaliseTabbyConfigPaths(localConfig)
+
+        expect(cloudConfig).toContain('~/.ssh/id_ed25519')
+        expect(expandTabbyConfigPaths(cloudConfig)).not.toContain('~/.ssh/id_ed25519')
     })
 })

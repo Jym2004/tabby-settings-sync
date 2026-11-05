@@ -233,6 +233,7 @@ git diff upstream/main --stat     # 与上游的差异
 - 不同步插件安装清单；`pluginBlacklist` 等普通 Tabby 配置仍包含在 `config.yaml` 中
 - 拉取 SSH 配置前创建 `.tabby-sync-backup` 备份；两端同时修改时额外保留 SSH 冲突快照，不静默覆盖
 - 拉取时自动排除 `HostName` 指向本机 IP 或主机名的 SSH 条目（避免出现“连接自己”），排除项记录在本地并在上传时补回，不会删除其他设备上的连接
+- SSH 密钥路径（`IdentityFile`、Tabby profile 的 `privateKeys`）在云端统一存为 `~/.ssh/...`，各系统拉取时展开为本机路径，Mac/Windows/Linux 可共用
 - 构建依赖由 `node-sass` 切换为 `sass`，以支持当前 Node.js 版本
 
 All local modifications are released under the MIT License, Copyright (c) 2026 Jym2004.

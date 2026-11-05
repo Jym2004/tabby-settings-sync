@@ -30,6 +30,120 @@ function dumpTabbyConfig (config: any): string {
     return yaml.dump(config, { lineWidth: -1, noRefs: true })
 }
 
+/** Convert an absolute key path into a portable `~` path for the cloud copy. */
+function normaliseLocalPath (value: string): string {
+    if (!value) {
+        return value
+    }
+
+    const cleaned = value.trim().replace(/^["']|["']$/g, '').replace(/\\/g, '/')
+    const home = os.homedir().replace(/\\/g, '/').replace(/\/$/, '')
+    if (cleaned.toLowerCase().startsWith(home.toLowerCase() + '/')) {
+        return '~/' + cleaned.slice(home.length + 1)
+    }
+
+    const windowsHome = cleaned.match(/^[A-Za-z]:\/Users\/[^/]+\/(.+)$/)
+    if (windowsHome) {
+        return '~/' + windowsHome[1]
+    }
+
+    const unixHome = cleaned.match(/^\/(?:Users|home)\/[^/]+\/(.+)$/)
+    if (unixHome) {
+        return '~/' + unixHome[1]
+    }
+
+    return cleaned
+}
+
+/** Expand a portable `~` path for the current operating system. */
+function expandLocalPath (value: string): string {
+    if (!value) {
+        return value
+    }
+
+    const home = os.homedir().replace(/\\/g, '/')
+    if (value === '~') {
+        return home
+    }
+    if (value.startsWith('~/')) {
+        return home + value.slice(1)
+    }
+
+    return value.replace(/\\/g, '/')
+}
+
+function mapProfilePaths (config: any, mapper: (value: string) => string): any {
+    if (!config || !Array.isArray(config.profiles)) {
+        return config
+    }
+
+    let changed = false
+    const profiles = config.profiles.map(profile => {
+        const options = profile?.options
+        if (!options) {
+            return profile
+        }
+
+        const nextOptions = { ...options }
+        if (Array.isArray(options.privateKeys)) {
+            const privateKeys = options.privateKeys.map(mapper)
+            if (privateKeys.some((key, index) => key !== options.privateKeys[index])) {
+                nextOptions.privateKeys = privateKeys
+                changed = true
+            }
+        }
+        if (typeof options.privateKey === 'string') {
+            const privateKey = mapper(options.privateKey)
+            if (privateKey !== options.privateKey) {
+                nextOptions.privateKey = privateKey
+                changed = true
+            }
+        }
+
+        return changed ? { ...profile, options: nextOptions } : profile
+    })
+
+    return changed ? { ...config, profiles } : config
+}
+
+/** Make Tabby SSH profile key paths portable before uploading. */
+export function normaliseTabbyConfigPaths (content: string): string {
+    const config = parseTabbyConfig(content)
+    if (!config) {
+        return content || ''
+    }
+
+    const normalised = mapProfilePaths(config, normaliseLocalPath)
+    return normalised === config ? (content || '') : dumpTabbyConfig(normalised)
+}
+
+/** Expand portable key paths for the local operating system after pulling. */
+export function expandTabbyConfigPaths (content: string): string {
+    const config = parseTabbyConfig(content)
+    if (!config) {
+        return content || ''
+    }
+
+    const expanded = mapProfilePaths(config, expandLocalPath)
+    return expanded === config ? (content || '') : dumpTabbyConfig(expanded)
+}
+
+/** Make IdentityFile/CertificateFile paths portable in OpenSSH config. */
+export function normaliseSshConfigPaths (content: string): string {
+    return (content || '').replace(/\r\n/g, '\n').split('\n').map(line => {
+        const match = line.match(/^(\s*(?:IdentityFile|CertificateFile)\s+)(.+)$/i)
+        return match ? match[1] + normaliseLocalPath(match[2]) : line
+    }).join('\n')
+}
+
+/** Expand `~` key paths for the local operating system before writing OpenSSH config. */
+export function expandSshConfigPaths (content: string): string {
+    return (content || '').replace(/\r\n/g, '\n').split('\n').map(line => {
+        const match = line.match(/^(\s*(?:IdentityFile|CertificateFile)\s+)(.+)$/i)
+        return match ? match[1] + expandLocalPath(match[2]) : line
+    }).join('\n')
+}
+
 /** Addresses and names that identify this computer rather than a remote host. */
 export function getLocalHostIdentifiers (): Set<string> {
     const identifiers = new Set<string>(['localhost', '127.0.0.1', '::1'])
