@@ -17,7 +17,10 @@
     "postbuild": "node scripts/postbuild.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "NOTICE",
+    "README.zh-CN.md"
   ],
   "author": "TranIT - tran.tuan@tranit.co",
   "contributors": [
