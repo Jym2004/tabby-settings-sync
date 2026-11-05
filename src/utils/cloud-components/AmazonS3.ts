@@ -2,7 +2,6 @@
  * Amazon S3 Component for all plugin's S3 actions
  * @date 29 July 2021
  * @plugin Tabby Cloud Sync Settings
- * @author Tran IT <tranit1209@gmail.com>
  * @licence MIT
  */
 import { Endpoint, S3 } from 'aws-sdk'

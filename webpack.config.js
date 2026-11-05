@@ -7,7 +7,7 @@ const webpack = require('webpack')
 const dropboxAppKey = (process.env.DROPBOX_APP_KEY || '').trim()
 const buildId = new Date().toISOString()
 
-console.log(`[terminus-cloud-settings-sync] Build ${buildId}: DROPBOX_APP_KEY present=${dropboxAppKey.length > 0}, length=${dropboxAppKey.length}`)
+console.log(`[terminus-cloud-settings-sync-plus] Build ${buildId}: DROPBOX_APP_KEY present=${dropboxAppKey.length > 0}, length=${dropboxAppKey.length}`)
 
 module.exports = {
     target: 'node',

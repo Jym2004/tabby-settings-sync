@@ -27,7 +27,6 @@ const amazonCompatibilityEndpoints = {
 }
 
 const DevEnv = DevEnvConstants
-const API_URL = `${DevEnv.ENABLE_DEBUG ? 'http' : 'https' }://tabby-api.tranit.${DevEnv.ENABLE_DEBUG ? 'local': 'co'}`
 
 const CloudSyncSettingsData = {
     defaultSyncInterval: 20, // 20 seconds
@@ -130,8 +129,7 @@ const CloudSyncSettingsData = {
         },
     },
     external_urls: {
-        ApiUrl: API_URL,
-        BlackBlazeHelp: API_URL + '/how-to-get-blackblaze-regtion-code/',
+        BlackBlazeHelp: 'https://www.backblaze.com/docs/cloud-storage-application-keys',
         checkForUpdateUrl: 'https://registry.npmjs.org/terminus-cloud-settings-sync-plus',
         githubIssuesUrl: 'https://github.com/Jym2004/tabby-settings-sync/issues',
     },
