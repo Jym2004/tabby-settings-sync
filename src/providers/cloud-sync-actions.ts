@@ -52,11 +52,15 @@ export class CloudSyncActions {
             return
         }
 
-        const result = await SettingsHelper.syncWithCloud(this.config, this.platform)
-        if (result?.result) {
-            PluginToast.success(CloudSyncLang.trans('sync.sync_success'))
-        } else {
-            PluginToast.error(result?.message || CloudSyncLang.trans('sync.sync_error'))
+        try {
+            const result = await SettingsHelper.syncWithCloud(this.config, this.platform)
+            if (result?.result) {
+                PluginToast.success(CloudSyncLang.trans('sync.sync_success'))
+            } else {
+                PluginToast.error(result?.message || CloudSyncLang.trans('sync.sync_error'))
+            }
+        } catch (error) {
+            PluginToast.error(error.message || CloudSyncLang.trans('sync.sync_error'))
         }
     }
 
@@ -69,9 +73,15 @@ export class CloudSyncActions {
             return
         }
 
-        await SettingsHelper.syncLocalSettingsToCloud(this.platform)
-        if (!SyncLock.isLocked) {
-            PluginToast.success('Local settings uploaded to the cloud.')
+        try {
+            const success = await SettingsHelper.syncLocalSettingsToCloud(this.platform)
+            if (success) {
+                PluginToast.success('Local settings uploaded to the cloud.')
+            } else {
+                PluginToast.error(CloudSyncLang.trans('sync.sync_server_failed'))
+            }
+        } catch (error) {
+            PluginToast.error(error.message || CloudSyncLang.trans('sync.sync_server_failed'))
         }
     }
 

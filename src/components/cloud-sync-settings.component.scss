@@ -55,6 +55,17 @@
     justify-self: end;
 }
 
+.manual-sync-settings .description {
+    opacity: 0.5;
+    line-height: 1.5;
+}
+
+.manual-sync-settings__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
 .encryption-heading {
     padding: 4px 0 16px;
 }

@@ -27,6 +27,12 @@ npm install --prefix "$env:APPDATA\tabby\plugins" terminus-cloud-settings-sync-p
 
 npm 包名：`terminus-cloud-settings-sync-plus`。
 
+## 手动同步
+
+保存云存储配置后，设置页会显示 **Sync now** 和 **Force upload from this device**。
+关闭 **Automatic sync** 只会停止后台定时同步和配置变更上传，仍可使用设置页、工具栏或命令面板里的手动操作。
+**Sync now** 按本地与云端的变更情况同步，遇到双方冲突时保留副本；强制上传会用本机设置覆盖云端副本。
+
 ## 构建
 
 需要 Node.js 和 Yarn。普通本地构建可运行 `npm run build:local`；构建 Dropbox 版本需要提供自己的 `DROPBOX_APP_KEY`。

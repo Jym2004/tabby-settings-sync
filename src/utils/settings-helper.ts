@@ -301,9 +301,11 @@ export class SettingsHelperClass {
         const savedConfigs = this.readConfigFile(platform)
         const logger = new Logger(platform)
 
-        if (!savedConfigs || !savedConfigs.enabled) {
-            logger.log('Sync disabled or config missing. Skipping...')
-            return { result: false, message: '' }
+        // This entry point is shared with manual actions. Background callers
+        // enforce the automatic-sync preference before reaching this method.
+        if (!savedConfigs) {
+            logger.log('Sync config missing. Skipping...')
+            return { result: false, message: CloudSyncLang.trans('sync.need_to_save_config') }
         }
 
         const adapter = this.adapterHandler[savedConfigs.adapter]

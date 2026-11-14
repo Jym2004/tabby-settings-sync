@@ -27,6 +27,12 @@ npm install --prefix "$env:APPDATA\tabby\plugins" terminus-cloud-settings-sync-p
 
 npm package: `terminus-cloud-settings-sync-plus`.
 
+## Manual sync
+
+After saving a storage provider, the settings page offers **Sync now** and **Force upload from this device**.
+Turning off **Automatic sync** stops background polling and uploads on configuration changes; manual actions remain available in settings, the toolbar, and the command palette.
+**Sync now** reconciles local and cloud changes and preserves copies on conflict. Force upload replaces the cloud copy with this device's settings.
+
 ## Build
 
 Requires Node.js and Yarn. Use `npm run build:local` for a local build; Dropbox builds require your own `DROPBOX_APP_KEY`.

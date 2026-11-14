@@ -12,7 +12,7 @@ export class CloudSyncToolbarProvider extends ToolbarButtonProvider {
 
     provide (): ToolbarButton[] {
         const status = this.actions.status
-        const opensSettings = status !== 'ready'
+        const opensSettings = status === 'unconfigured' || status === 'conflict'
 
         return [{
             icon: CLOUD_SYNC_ICON,
@@ -25,7 +25,7 @@ export class CloudSyncToolbarProvider extends ToolbarButtonProvider {
                     click: () => this.actions.openSettings(),
                 }
 
-                if (status === 'unconfigured' || status === 'disabled' || status === 'conflict') {
+                if (status === 'unconfigured' || status === 'conflict') {
                     return [settingsItem]
                 }
 

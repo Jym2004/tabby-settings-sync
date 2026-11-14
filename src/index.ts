@@ -172,6 +172,10 @@ export default class CloudSyncSettingsModule {
 
     /** Upload the local config after a debounced change event, if it really changed. */
     private async pushLocalConfigChange (): Promise<void> {
+        const savedConfigs = SettingsHelper.readConfigFile(this.platform)
+        if (!savedConfigs?.enabled) {
+            return
+        }
         if (this.isTabbySyncActive() || syncPausedForConflict) {
             return
         }

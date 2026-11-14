@@ -36,7 +36,9 @@ const CloudSyncLang = {
             service_label: 'Storage provider',
             service_hint: 'Where your Tabby configuration is stored. Pick a provider, then enter its credentials below.',
             sync_enabled_label: 'Automatic sync',
-            sync_enabled_hint: 'Keep this device in sync in the background. Available once a provider has been saved.',
+            sync_enabled_hint: 'Keep this device in sync in the background. Manual sync remains available when this is off.',
+            manual_sync_label: 'Manual sync',
+            manual_sync_hint: 'Sync once without enabling automatic sync. Force upload replaces the cloud copy with settings from this device.',
             show_loader_label: 'Show sync indicator',
             show_loader_hint: 'Display a small spinner in the corner of the window while a sync is running.',
             interval_label: 'Sync interval',
@@ -213,6 +215,7 @@ const CloudSyncLang = {
             column_action: 'Action',
         },
         buttons: {
+            sync_now: 'Sync now',
             sync_from_cloud: 'Use cloud settings',
             sync_from_local: 'Use settings from this device',
             check_update: 'Check for updates',

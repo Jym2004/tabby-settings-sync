@@ -9,6 +9,8 @@ import { version } from '../../package.json'
 import devConstants from '../services/dev-constants'
 import PluginToast from '../services/toast'
 import Logger from '../utils/Logger'
+import { CloudSyncActions } from '../providers/cloud-sync-actions'
+import SyncLock from '../utils/sync-lock'
 
 /** @hidden */
 @Component({
@@ -44,7 +46,8 @@ export class CloudSyncSettingsComponent extends BaseComponent implements OnInit 
     @HostBinding('class.content-box') true
     constructor (
         public config: ConfigService,
-        private platform: PlatformService
+        private platform: PlatformService,
+        public actions: CloudSyncActions,
     ) {
         super()
     }
@@ -146,6 +149,13 @@ export class CloudSyncSettingsComponent extends BaseComponent implements OnInit 
     /** Persists the enabled/disabled state of the sync plugin. */
     async toggleEnableSync(): Promise<void> {
         await SettingsHelper.toggleEnabledPlugin(this.syncEnabled, this.platform)
+    }
+
+    get canSyncManually (): boolean {
+        return this.storedSettingsData !== null
+            && this.selectedProvider === this.storedSettingsData.adapter
+            && !this.actions.isTabbySyncActive
+            && !SyncLock.isLocked
     }
 
     /** Persists whether the sync loader indicator should be shown. */

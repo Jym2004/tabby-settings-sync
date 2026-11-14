@@ -75,6 +75,26 @@ h3([textContent]='translate.trans("settings.title")')
                                     (ngModelChange)='onIntervalSyncChanged()',
                                 )
 
+                    .row(*ngIf='storedSettingsData && selectedProvider === storedSettingsData.adapter')
+                        .col-md-12.manual-sync-settings.has-border-top.pt-3.pb-3
+                            .title([textContent]='translate.trans("settings.manual_sync_label")')
+                            .description.mb-3([textContent]='translate.trans("settings.manual_sync_hint")')
+                            .manual-sync-settings__actions
+                                button.btn.btn-primary(
+                                    type='button',
+                                    (click)='actions.syncNow()',
+                                    [disabled]='!canSyncManually',
+                                )
+                                    i.fas.fa-fw.fa-refresh.mr-2
+                                    span([textContent]='translate.trans("buttons.sync_now")')
+                                button.btn.btn-secondary(
+                                    type='button',
+                                    (click)='actions.uploadLocalSettings()',
+                                    [disabled]='!canSyncManually',
+                                )
+                                    i.fas.fa-fw.fa-cloud-upload.mr-2
+                                    span([textContent]='translate.trans("buttons.upload_settings")')
+
                     .row
                         .col-md-12.has-border-top.pt-3(*ngIf='selectedProvider === serviceProviderValues.BUILT_IN')
                             builtin-settings
