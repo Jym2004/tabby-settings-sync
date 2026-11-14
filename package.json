@@ -1,7 +1,7 @@
 {
   "name": "terminus-cloud-settings-sync-plus",
-  "version": "1.0.3",
-  "date": "06-11-2026",
+  "version": "1.0.4",
+  "date": "14-11-2026",
   "description": "Sync Tabby settings and SSH connections across Windows, macOS and Linux.",
   "keywords": [
     "terminus-plugin",
