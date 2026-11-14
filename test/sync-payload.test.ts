@@ -1,8 +1,6 @@
 import {
     createSyncPayload,
     excludeSelfReferencingSshConfig,
-    expandSshConfigPaths,
-    expandTabbyConfigPaths,
     getOpenSshConfigPath,
     hashSyncContent,
     mergeLocalProfiles,
@@ -115,20 +113,19 @@ describe('sync payload', () => {
         expect(restoreExcludedSshBlocks(filtered.config, filtered.excluded)).toContain('Host Self')
     })
 
-    it('makes SSH key paths portable across operating systems', () => {
+    it('keeps OpenSSH identities out of the cloud while retaining connections', () => {
         const cloudConfig = normaliseSshConfigPaths([
             'Host A6000',
             '    HostName 10.0.0.1',
             '    IdentityFile "C:\\Users\\jym\\.ssh\\my key" # primary key',
         ].join('\n'))
 
-        expect(cloudConfig).toContain('IdentityFile "~/.ssh/my key"')
-        expect(cloudConfig).toContain('" # primary key')
-        expect(expandSshConfigPaths(cloudConfig)).not.toContain('IdentityFile "~/')
-        expect(expandSshConfigPaths(cloudConfig)).toContain('" # primary key')
+        expect(cloudConfig).toContain('Host A6000')
+        expect(cloudConfig).not.toContain('IdentityFile')
+        expect(cloudConfig).not.toContain('my key')
     })
 
-    it('makes Tabby SSH profile key paths portable across operating systems', () => {
+    it('keeps Tabby private-key paths out of cloud profiles', () => {
         const localConfig = [
             'profiles:',
             '  - id: ssh:a6000',
@@ -141,7 +138,8 @@ describe('sync payload', () => {
         ].join('\n')
         const cloudConfig = normaliseTabbyConfigPaths(localConfig)
 
-        expect(cloudConfig).toContain('~/.ssh/id_ed25519')
-        expect(expandTabbyConfigPaths(cloudConfig)).not.toContain('~/.ssh/id_ed25519')
+        expect(cloudConfig).toContain('host: 10.0.0.1')
+        expect(cloudConfig).not.toContain('privateKeys')
+        expect(cloudConfig).not.toContain('id_ed25519')
     })
 })

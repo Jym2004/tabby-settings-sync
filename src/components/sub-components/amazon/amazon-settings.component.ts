@@ -117,6 +117,8 @@ export class CloudSyncAmazonSettingsComponent implements OnInit {
                 await SettingsHelper.syncWithCloud(this.config, this.platform, true).then(async (subResult: SyncResult) => {
                     if (subResult.result) {
                         this.config.requestRestart()
+                    } else if (subResult.requiresLocalSshSetup) {
+                        PluginToast.warning(subResult.message)
                     } else {
                         PluginToast.error(subResult.message || CloudSyncLang.trans('sync.sync_server_failed'))
                         this.isSettingSaved = false

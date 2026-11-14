@@ -56,6 +56,9 @@ export class CloudSyncActions {
             const result = await SettingsHelper.syncWithCloud(this.config, this.platform)
             if (result?.result) {
                 PluginToast.success(CloudSyncLang.trans('sync.sync_success'))
+            } else if (result?.requiresLocalSshSetup) {
+                PluginToast.warning(result.message)
+                this.openSettings()
             } else {
                 PluginToast.error(result?.message || CloudSyncLang.trans('sync.sync_error'))
             }

@@ -10,6 +10,7 @@ import moment from 'moment'
 import { Dropbox } from 'dropbox'
 import { EventEmitter } from '@angular/core'
 import { applyRemoteConfigOnFirstInit, isRemoteMissingError, recordLocalBaselineOnFirstInit, resolveSyncDirection } from './sync-utils'
+import { requiresLocalSshSetup } from '../local-ssh-identity'
 
 class DropboxSync {
     private _isFirstInit = false
@@ -35,11 +36,12 @@ class DropboxSync {
     }
 
     /** Emit a `dropbox-sync-complete` event to any subscribed UI component. */
-    private emitSyncComplete (result: boolean, message?: string): void {
+    private emitSyncComplete (result: boolean, message?: string, requiresLocalSshSetup = false): void {
         this._emitter?.emit({
             action: this.emitterActions.syncComplete,
             result,
             message,
+            requiresLocalSshSetup,
         })
     }
 
@@ -138,6 +140,10 @@ class DropboxSync {
                 result.message = outcome.message
             }
         } catch (error) {
+            if (requiresLocalSshSetup(error)) {
+                this.emitSyncComplete(false, error.message, true)
+                return { result: false, message: error.message, requiresLocalSshSetup: true }
+            }
             logger.log('File download failed: ' + error.toString())
             await this.tryRefreshToken(platform, params, dbx, logger)
 

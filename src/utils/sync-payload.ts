@@ -2,6 +2,7 @@ import * as os from 'os'
 import * as path from 'path'
 import * as yaml from 'js-yaml'
 import { hashConfigContent } from './config-hash'
+import { stripOpenSshIdentities, stripTabbySshIdentities } from './local-ssh-identity'
 
 export interface SyncPayload {
     tabbyConfig: string,
@@ -28,31 +29,6 @@ function parseTabbyConfig (content: string): any {
 
 function dumpTabbyConfig (config: any): string {
     return yaml.dump(config, { lineWidth: -1, noRefs: true })
-}
-
-/** Convert an absolute key path into a portable `~` path for the cloud copy. */
-function normaliseLocalPath (value: string): string {
-    if (!value) {
-        return value
-    }
-
-    const cleaned = value.trim().replace(/\\/g, '/')
-    const home = os.homedir().replace(/\\/g, '/').replace(/\/$/, '')
-    if (cleaned.toLowerCase().startsWith(home.toLowerCase() + '/')) {
-        return '~/' + cleaned.slice(home.length + 1)
-    }
-
-    const windowsHome = cleaned.match(/^[A-Za-z]:\/Users\/[^/]+\/(.+)$/)
-    if (windowsHome) {
-        return '~/' + windowsHome[1]
-    }
-
-    const unixHome = cleaned.match(/^\/(?:Users|home)\/[^/]+\/(.+)$/)
-    if (unixHome) {
-        return '~/' + unixHome[1]
-    }
-
-    return cleaned
 }
 
 /** Expand a portable `~` path for the current operating system. */
@@ -141,15 +117,14 @@ function mapProfilePaths (config: any, mapper: (value: string) => string): any {
     return changed ? { ...config, profiles } : config
 }
 
-/** Make Tabby SSH profile key paths portable before uploading. */
+/** Remove device-local authentication from the shared Tabby config. */
 export function normaliseTabbyConfigPaths (content: string): string {
     const config = parseTabbyConfig(content)
     if (!config) {
         return content || ''
     }
 
-    const normalised = mapProfilePaths(config, normaliseLocalPath)
-    return normalised === config ? (content || '') : dumpTabbyConfig(normalised)
+    return stripTabbySshIdentities(content)
 }
 
 /** Expand portable key paths for the local operating system after pulling. */
@@ -163,11 +138,9 @@ export function expandTabbyConfigPaths (content: string): string {
     return expanded === config ? (content || '') : dumpTabbyConfig(expanded)
 }
 
-/** Make IdentityFile/CertificateFile paths portable in OpenSSH config. */
+/** Remove device-local authentication from the shared OpenSSH config. */
 export function normaliseSshConfigPaths (content: string): string {
-    return (content || '').replace(/\r\n/g, '\n').split('\n').map(line => {
-        return mapSshConfigPathDirective(line, normaliseLocalPath)
-    }).join('\n')
+    return stripOpenSshIdentities(content)
 }
 
 /** Expand `~` key paths for the local operating system before writing OpenSSH config. */
@@ -386,7 +359,7 @@ export function splitSyncPayload (content: string): SyncPayload {
 /** Include the SSH sidecar in the existing canonical config fingerprint. */
 export function hashSyncContent (content: string): string {
     const payload = splitSyncPayload(content)
-    const cloudTabbyConfig = stripLocalProfiles(payload.tabbyConfig)
+    const cloudTabbyConfig = normaliseTabbyConfigPaths(stripLocalProfiles(payload.tabbyConfig))
     if (payload.sshConfig === null) {
         return hashConfigContent(cloudTabbyConfig)
     }
@@ -395,6 +368,6 @@ export function hashSyncContent (content: string): string {
 
     return hashConfigContent(JSON.stringify({
         tabbyConfig,
-        sshConfig: payload.sshConfig.replace(/\r\n/g, '\n'),
+        sshConfig: normaliseSshConfigPaths(payload.sshConfig),
     }))
 }

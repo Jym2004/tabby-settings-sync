@@ -418,7 +418,7 @@ export class CloudSyncDropboxSettingsComponent implements OnInit, OnDestroy {
             })
         }
 
-        this.dropboxServiceEmitter.subscribe(async (event: { action: string, result: boolean, message?: string, remoteContent?: string }) => {
+        this.dropboxServiceEmitter.subscribe(async (event: { action: string, result: boolean, message?: string, remoteContent?: string, requiresLocalSshSetup?: boolean }) => {
             if (event.action === 'dropbox-encryption-secret-required') {
                 await this.requestEncryptionSecret(event.remoteContent || '')
                 return
@@ -428,6 +428,8 @@ export class CloudSyncDropboxSettingsComponent implements OnInit, OnDestroy {
                 if (event.result) {
                     this.isSettingSaved = true
                     this.config.requestRestart()
+                } else if (event.requiresLocalSshSetup) {
+                    PluginToast.warning(event.message)
                 } else {
                     this.disconnect()
                     PluginToast.error(event.message)

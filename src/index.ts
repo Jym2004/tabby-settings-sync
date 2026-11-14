@@ -142,7 +142,7 @@ export default class CloudSyncSettingsModule {
 
     private detectSshConfigChange (): void {
         const savedConfigs = SettingsHelper.readConfigFile(this.platform)
-        if (!savedConfigs?.enabled) {
+        if (!savedConfigs?.enabled || savedConfigs.pendingSshBindings?.length) {
             return
         }
 
@@ -173,7 +173,7 @@ export default class CloudSyncSettingsModule {
     /** Upload the local config after a debounced change event, if it really changed. */
     private async pushLocalConfigChange (): Promise<void> {
         const savedConfigs = SettingsHelper.readConfigFile(this.platform)
-        if (!savedConfigs?.enabled) {
+        if (!savedConfigs?.enabled || savedConfigs.pendingSshBindings?.length) {
             return
         }
         if (this.isTabbySyncActive() || syncPausedForConflict) {
@@ -253,7 +253,7 @@ export default class CloudSyncSettingsModule {
         }
 
         const savedConfigs = SettingsHelper.readConfigFile(this.platform)
-        if (!savedConfigs?.enabled) {
+        if (!savedConfigs?.enabled || savedConfigs.pendingSshBindings?.length) {
             logger.log('Tabby Auto Sync Disabled ' + new Date().toLocaleString())
             this.subscribeToAutoSyncEvent()
             return

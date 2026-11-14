@@ -3,7 +3,7 @@ import CloudSyncSettingsData from '../../data/setting-items'
 import SettingsHelper from '../settings-helper'
 import SyncState, { SyncBaseline } from '../sync-state'
 import { hashConfigContent, shortHash } from '../config-hash'
-import { hashSyncContent, splitSyncPayload, stripLocalProfiles } from '../sync-payload'
+import { hashSyncContent, normaliseTabbyConfigPaths, splitSyncPayload, stripLocalProfiles } from '../sync-payload'
 import CloudSyncLang from '../../data/lang'
 import Logger from '../Logger'
 import moment from 'moment'
@@ -109,7 +109,7 @@ export async function applyRemoteConfigOnFirstInit (
     await SettingsHelper.applySyncContent(config, platform, remotePlain)
     const payload = splitSyncPayload(remotePlain)
     const baselineHash = payload.sshConfig === null
-        ? hashConfigContent(stripLocalProfiles(payload.tabbyConfig))
+        ? hashConfigContent(normaliseTabbyConfigPaths(stripLocalProfiles(payload.tabbyConfig)))
         : SettingsHelper.getLocalSyncHash(platform)
     SyncState.record(platform, adapterId, baselineHash)
 }
@@ -366,10 +366,10 @@ export async function resolveSyncDirection (options: SyncDirectionOptions): Prom
 
     const legacyRemote = remotePayload.sshConfig === null
     const remoteHash = legacyRemote
-        ? hashConfigContent(stripLocalProfiles(remotePayload.tabbyConfig))
+        ? hashConfigContent(normaliseTabbyConfigPaths(stripLocalProfiles(remotePayload.tabbyConfig)))
         : hashSyncContent(remotePlain)
     const localDecisionHash = legacyRemote
-        ? hashConfigContent(stripLocalProfiles(splitSyncPayload(local.content).tabbyConfig))
+        ? hashConfigContent(normaliseTabbyConfigPaths(stripLocalProfiles(splitSyncPayload(local.content).tabbyConfig)))
         : local.hash
     let baseline = SyncState.read(platform, adapterId)
     if (baseline?.hash) {
@@ -398,11 +398,21 @@ export async function resolveSyncDirection (options: SyncDirectionOptions): Prom
     logger.log(`Auto Sync ${providerLabel} | cloud updated: ${formatForLog(remoteUpdatedAt)} | local updated: ${formatForLog(local.updatedAt)} | cloud hash: ${shortHash(remoteHash)} | local hash: ${shortHash(local.hash)} | baseline: ${shortHash(baseline?.hash)}`)
 
     if (legacyRemote && remoteHash === localDecisionHash) {
+        await SettingsHelper.checkLocalSshSetup(platform, remotePlain)
         logger.log('Cloud payload predates SSH sync. Uploading the local SSH config alongside the existing Tabby config.')
         return applyPush(options, local.hash)
     }
 
     if (remoteHash === localDecisionHash) {
+        await SettingsHelper.checkLocalSshSetup(platform, remotePlain)
+        const remoteObject = yaml.load(remotePayload.tabbyConfig)
+        const sharedObject = yaml.load(normaliseTabbyConfigPaths(remotePayload.tabbyConfig))
+        const legacyIdentities = JSON.stringify(remoteObject) !== JSON.stringify(sharedObject)
+            || (remotePayload.sshConfig !== null && /^\s*(IdentityFile|CertificateFile|IdentityAgent|IdentitiesOnly|PreferredAuthentications|PubkeyAuthentication|PasswordAuthentication|KbdInteractiveAuthentication|PKCS11Provider|SecurityKeyProvider|Include)(?:\s*=\s*|\s+)/im.test(remotePayload.sshConfig))
+        if (legacyIdentities) {
+            logger.log('Shared connections agree; replacing legacy cloud identity fields with device-local bindings.')
+            return applyPush(options, local.hash)
+        }
         // Both sides already agree, so refresh the baseline and do nothing else.
         SyncState.record(platform, adapterId, SettingsHelper.getLocalSyncHash(platform), toIsoOrNull(remoteUpdatedAt))
         logger.log('Sync direction: none. Local and cloud content are identical.')

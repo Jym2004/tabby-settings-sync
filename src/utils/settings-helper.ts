@@ -14,13 +14,17 @@ import SyncLock from './sync-lock'
 import SyncState, { resolveBaselineKey } from './sync-state'
 import SettingsSecret from './settings-secret'
 import { decryptPayload, encryptV1, encryptV2, isV2Payload } from './settings-crypto'
-import { createSyncPayload, excludeSelfReferencingSshConfig, expandSshConfigPaths, expandTabbyConfigPaths, getOpenSshConfigPath, hashSyncContent, mergeLocalProfiles, normaliseSshConfigPaths, normaliseTabbyConfigPaths, restoreExcludedSshBlocks, SshConfigBlock, splitSyncPayload, stripLocalProfiles } from './sync-payload'
+import { createSyncPayload, excludeSelfReferencingSshConfig, getOpenSshConfigPath, hashSyncContent, mergeLocalProfiles, normaliseSshConfigPaths, normaliseTabbyConfigPaths, restoreExcludedSshBlocks, SshConfigBlock, splitSyncPayload, stripLocalProfiles } from './sync-payload'
+import { DeviceSshIdentities, LocalSshBinding, LocalSshSetupRequired, deviceBindingDirectives, mergeOpenSshIdentities, mergeTabbySshIdentities, requiresLocalSshSetup } from './local-ssh-identity'
+import * as os from 'os'
+import { Subject } from 'rxjs'
 
 const fs = require('fs')
 const path = require('path')
 const CryptoJS = require('crypto-js')
 
 export class SettingsHelperClass {
+    readonly localSshSetupChanged$ = new Subject<void>()
     /**
      * Maps a stored provider identifier to the adapter instance that knows how
      * to talk to that cloud service.
@@ -122,6 +126,45 @@ export class SettingsHelperClass {
         return this.readSshConfig()
     }
 
+    isLocalSshKeyAvailable (value: string): boolean {
+        if (!value || value.endsWith('.pub')) return false
+        return this.isLocalSshFileAvailable(value)
+    }
+
+    private isLocalSshFileAvailable (value: string): boolean {
+        if (!value || value.startsWith('vault://')) return false
+        const resolved = value.startsWith('~/') ? path.join(os.homedir(), value.slice(2)) : value
+        try { return fs.statSync(resolved).isFile() } catch (_) { return false }
+    }
+
+    async bindPendingSshConnections (config: ConfigService, platform: PlatformService, binding: LocalSshBinding, ids: string[]): Promise<void> {
+        const saved = this.readConfigFile(platform)
+        if (!saved?.pendingSshPayload || !saved?.pendingSshBindings?.length) throw new Error('There are no pending SSH connections.')
+        if (binding.auth === 'publicKey' && (!binding.privateKeys?.length || binding.privateKeys.some(key => !this.isLocalSshKeyAvailable(key)))) {
+            throw new Error('Choose an existing private-key file on this device.')
+        }
+        binding = { ...binding, privateKeys: binding.privateKeys?.map(key => key.startsWith('~/') ? path.join(os.homedir(), key.slice(2)).replace(/\\/g, '/') : key) }
+        const localBinding = deviceBindingDirectives(binding)
+        saved.localSshBindings = saved.localSshBindings || {}
+        for (const request of saved.pendingSshBindings) {
+            if (ids.includes(request.id)) saved.localSshBindings[request.id] = localBinding
+        }
+        if (!await this.writeEncryptedConfigAtomically(this.getStoredSettingsPath(platform), saved)) throw new Error('Could not save local SSH bindings.')
+        await this.applySyncContent(config, platform, saved.pendingSshPayload)
+        SyncState.record(platform, resolveBaselineKey(saved), this.getLocalSyncHash(platform))
+    }
+
+    async cancelPendingSshConnections (platform: PlatformService): Promise<void> {
+        const saved = this.readConfigFile(platform)
+        if (!saved) return
+        delete saved.pendingSshBindings
+        delete saved.pendingSshPayload
+        delete saved.pendingSshLocalConfig
+        delete saved.pendingSshLocalOpenSsh
+        if (!await this.writeEncryptedConfigAtomically(this.getStoredSettingsPath(platform), saved)) throw new Error('Could not cancel the pending download.')
+        this.localSshSetupChanged$.next()
+    }
+
     private getExcludedSshCacheKey (platform: PlatformService): string {
         return resolveBaselineKey(this.readConfigFile(platform))
     }
@@ -152,6 +195,7 @@ export class SettingsHelperClass {
 
     /** Read the combined, backward-compatible payload that is encrypted and stored in the cloud. */
     readSyncContent (platform: PlatformService, encrypted = false): string {
+        if (encrypted && this.readConfigFile(platform)?.pendingSshBindings?.length) throw new LocalSshSetupRequired()
         const tabbyConfig = this.readTabbyConfigFile(platform, true, false)
         const sshConfig = restoreExcludedSshBlocks(this.readSshConfig(), this.readExcludedSshBlocks(platform))
         const content = createSyncPayload(
@@ -197,6 +241,29 @@ export class SettingsHelperClass {
         return await this.writeFileAsync(filePath, content) ? filePath : null
     }
 
+    /** Check identities even when shared settings are equal but local key files vanished. */
+    async checkLocalSshSetup (platform: PlatformService, content: string): Promise<void> {
+        const payload = splitSyncPayload(content)
+        if (!payload.valid) throw new Error('The downloaded sync payload is malformed.')
+        const saved = this.readConfigFile(platform)
+        const local = this.readTabbyConfigFile(platform, true, false)
+        const ssh = this.readSshConfig()
+        const identities: DeviceSshIdentities = { bindings: saved?.localSshBindings || {}, pending: [] }
+        const usable = (value: string) => this.isLocalSshFileAvailable(value)
+        mergeTabbySshIdentities(local, payload.tabbyConfig, identities, usable)
+        if (payload.sshConfig !== null) mergeOpenSshIdentities(ssh, excludeSelfReferencingSshConfig(payload.sshConfig).config, identities, usable)
+        if (!identities.pending.length) return
+        if (!saved) throw new Error('Save a cloud provider before binding SSH identities.')
+        saved.localSshBindings = identities.bindings
+        saved.pendingSshBindings = identities.pending
+        saved.pendingSshPayload = content
+        saved.pendingSshLocalConfig = local
+        saved.pendingSshLocalOpenSsh = ssh
+        if (!await this.writeEncryptedConfigAtomically(this.getStoredSettingsPath(platform), saved)) throw new Error('Could not save pending SSH connections.')
+        this.localSshSetupChanged$.next()
+        throw new LocalSshSetupRequired()
+    }
+
     /** Apply a cloud payload, preserving old single-file cloud content. */
     async applySyncContent (config: ConfigService, platform: PlatformService, content: string): Promise<void> {
         const payload = splitSyncPayload(content)
@@ -206,15 +273,34 @@ export class SettingsHelperClass {
         const previousExcludedBlocks = this.readExcludedSshBlocks(platform)
         const tabbyConfigPath = path.dirname(platform.getConfigPath()) + CloudSyncSettingsData.tabbySettingsFilename
         const localTabbyConfig = this.readTabbyConfigFile(platform, true, false)
-        const tabbyConfigToApply = expandTabbyConfigPaths(mergeLocalProfiles(localTabbyConfig, payload.tabbyConfig))
+        const saved = this.readConfigFile(platform)
+        const previousSshConfig = this.readSshConfig()
+        if (saved?.pendingSshPayload && (saved.pendingSshLocalConfig !== localTabbyConfig || saved.pendingSshLocalOpenSsh !== previousSshConfig)) {
+            const error = new LocalSshSetupRequired()
+            error.message = 'Local settings changed while SSH setup was pending. Cancel this pending download, then sync again; the live configuration has not been replaced.'
+            throw error
+        }
+        const identities: DeviceSshIdentities = { bindings: saved?.localSshBindings || {}, pending: [] }
+        const usable = (value: string) => this.isLocalSshFileAvailable(value)
+        const tabbyConfigToApply = mergeTabbySshIdentities(localTabbyConfig, mergeLocalProfiles(localTabbyConfig, payload.tabbyConfig), identities, usable)
+        const filtered = payload.sshConfig !== null ? excludeSelfReferencingSshConfig(payload.sshConfig) : null
+        const sshConfigToApply = filtered ? mergeOpenSshIdentities(previousSshConfig, filtered.config, identities, usable) : null
+        if (identities.pending.length) {
+            if (!saved) throw new Error('Save a cloud provider before binding SSH identities.')
+            saved.localSshBindings = identities.bindings
+            saved.pendingSshBindings = identities.pending
+            saved.pendingSshPayload = content
+            saved.pendingSshLocalConfig = localTabbyConfig
+            saved.pendingSshLocalOpenSsh = previousSshConfig
+            if (!await this.writeEncryptedConfigAtomically(this.getStoredSettingsPath(platform), saved)) throw new Error('Could not save pending SSH connections.')
+            this.localSshSetupChanged$.next()
+            throw new LocalSshSetupRequired()
+        }
         if (fs.existsSync(tabbyConfigPath) && !await this.backupTabbyConfigFile(platform)) {
             throw new Error('Could not back up the local Tabby config; refusing to replace settings.')
         }
-        const previousSshConfig = this.readSshConfig()
         let sshUpdated = false
         if (payload.sshConfig !== null) {
-            const filtered = excludeSelfReferencingSshConfig(payload.sshConfig)
-            const sshConfigToApply = expandSshConfigPaths(filtered.config)
             const backedUp = await this.backupSshConfigFile()
             if (!backedUp) {
                 throw new Error('Could not back up the local SSH config; refusing to replace settings.')
@@ -235,7 +321,28 @@ export class SettingsHelperClass {
             }
             throw new Error('Could not write the local Tabby config.')
         }
-        config.writeRaw(tabbyConfigToApply)
+        try {
+            await config.writeRaw(tabbyConfigToApply)
+            const latestSettings = this.readConfigFile(platform)
+            if (latestSettings) {
+                latestSettings.localSshBindings = identities.bindings
+                delete latestSettings.pendingSshBindings
+                delete latestSettings.pendingSshPayload
+                delete latestSettings.pendingSshLocalConfig
+                delete latestSettings.pendingSshLocalOpenSsh
+                if (!await this.writeEncryptedConfigAtomically(this.getStoredSettingsPath(platform), latestSettings)) throw new Error('Could not finish saving local SSH bindings.')
+                this.localSshSetupChanged$.next()
+            }
+        } catch (error) {
+            const tabbyRestored = await this.writeTabbyConfigFile(platform, localTabbyConfig)
+            const sshRestored = !sshUpdated || await this.writeFileAsync(this.getSshConfigPath(), previousSshConfig)
+            const settingsRestored = !saved || await this.writeEncryptedConfigAtomically(this.getStoredSettingsPath(platform), saved)
+            if (tabbyRestored) {
+                try { await config.writeRaw(localTabbyConfig) } catch (_) { }
+            }
+            if (!tabbyRestored || !sshRestored || !settingsRestored) throw new Error('The download could not be applied or fully rolled back. Restore the local backup before syncing again.')
+            throw error
+        }
     }
 
     /**
@@ -260,12 +367,18 @@ export class SettingsHelperClass {
                 settingsArr.showLoader = savedConfigs.showLoader
                 settingsArr.interval_insync = savedConfigs.interval_insync
                 settingsArr.excludedSshBlocksByTarget = savedConfigs.excludedSshBlocksByTarget
+                settingsArr.localSshBindings = savedConfigs.localSshBindings
 
                 // Pointing the plugin at a different provider (or a different
                 // gist flavour on the same one) invalidates the recorded
                 // baseline, so force the next cycle to re-establish it.
                 if (resolveBaselineKey(savedConfigs) !== resolveBaselineKey(settingsArr)) {
                     SyncState.clearAdapter(platform, savedConfigs.adapter)
+                } else {
+                    settingsArr.pendingSshBindings = savedConfigs.pendingSshBindings
+                    settingsArr.pendingSshPayload = savedConfigs.pendingSshPayload
+                    settingsArr.pendingSshLocalConfig = savedConfigs.pendingSshLocalConfig
+                    settingsArr.pendingSshLocalOpenSsh = savedConfigs.pendingSshLocalOpenSsh
                 }
             }
         }
@@ -309,6 +422,9 @@ export class SettingsHelperClass {
         }
 
         const adapter = this.adapterHandler[savedConfigs.adapter]
+        if (savedConfigs.pendingSshBindings?.length) {
+            return { result: false, message: new LocalSshSetupRequired().message, requiresLocalSshSetup: true }
+        }
         if (!adapter) {
             logger.log('No adapter found for provider: ' + savedConfigs.adapter, 'error')
             return { result: false, message: '' }
@@ -322,6 +438,7 @@ export class SettingsHelperClass {
             try {
                 return await adapter.sync(config, platform, savedConfigs.configs, firstInit, emitter)
             } catch (e) {
+                if (requiresLocalSshSetup(e)) return { result: false, message: e.message, requiresLocalSshSetup: true }
                 logger.log('Sync failed: ' + e.toString(), 'error')
                 PluginToast.error(e.toString())
                 return { result: false, message: e.toString() }
@@ -337,6 +454,10 @@ export class SettingsHelperClass {
      */
     async syncLocalSettingsToCloud (platform: PlatformService): Promise<boolean> {
         const savedConfigs = this.readConfigFile(platform)
+        if (savedConfigs?.pendingSshBindings?.length) {
+            PluginToast.warning(new LocalSshSetupRequired().message)
+            return false
+        }
         if (!savedConfigs || !this.adapterHandler[savedConfigs.adapter]) {
             PluginToast.error(CloudSyncLang.trans('sync.error_invalid_setting_2'))
             return false

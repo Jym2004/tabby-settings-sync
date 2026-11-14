@@ -15,6 +15,7 @@ import { AmazonParams, SyncResult } from '../../interface'
 import Logger from '../../utils/Logger'
 import moment from 'moment'
 import { applyRemoteConfigOnFirstInit, isRemoteMissingError, recordLocalBaselineOnFirstInit, resolveSyncDirection } from './sync-utils'
+import { requiresLocalSshSetup } from '../local-ssh-identity'
 
 /** Connection details resolved from {@link AmazonParams} for a single call. */
 interface ResolvedS3Config {
@@ -161,16 +162,10 @@ class AmazonS3Class {
                     result.message = outcome.message
                 }
             } catch (e) {
+                if (requiresLocalSshSetup(e)) return { result: false, message: e.message, requiresLocalSshSetup: true }
                 result.result = false
                 result.message = e.toString()
-                PluginToast.error(CloudSyncLang.trans('sync.error_invalid_setting'))
-                const copyObjectParams = {
-                    CopySource: remoteFile,
-                    Bucket: resolved.bucket,
-                    Key: remoteFile + '_bk' + new Date().getTime(),
-                }
-                await client.copyObject(copyObjectParams).promise()
-                await client.upload(uploadObjectParams).promise()
+                PluginToast.error(CloudSyncLang.trans('sync.sync_error'))
                 logger.log(CloudSyncLang.trans('log.read_cloud_settings') + ' | Exception: ' + e.toString(), 'error')
             }
         } catch (e) {

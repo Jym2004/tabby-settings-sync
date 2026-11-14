@@ -9,6 +9,7 @@ import { Client } from 'basic-ftp'
 import Logger from '../../utils/Logger'
 import moment from 'moment'
 import { applyRemoteConfigOnFirstInit, isRemoteMissingError, recordLocalBaselineOnFirstInit, resolveSyncDirection } from './sync-utils'
+import { requiresLocalSshSetup } from '../local-ssh-identity'
 
 const fs = require('fs')
 const path = require('path')
@@ -109,11 +110,10 @@ class FTP {
                     result.message = outcome.message
                 }
             } catch (e) {
+                if (requiresLocalSshSetup(e)) return { result: false, message: e.message, requiresLocalSshSetup: true }
                 result.result = false
                 result.message = e.toString()
-                PluginToast.error(CloudSyncLang.trans('sync.error_invalid_setting'))
-                await client.rename(remoteFile, remoteFile + '_bk' + new Date().getTime())
-                await this.uploadLocalSettings(params, client, platform)
+                PluginToast.error(CloudSyncLang.trans('sync.sync_error'))
                 logger.log(CloudSyncLang.trans('log.read_cloud_settings') + ' | Exception: ' + e.toString(), 'error')
             }
         } catch (e) {

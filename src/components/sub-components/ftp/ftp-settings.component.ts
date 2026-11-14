@@ -121,6 +121,8 @@ export class CloudSyncFtpSettingsComponent implements OnInit {
                 await SettingsHelper.syncWithCloud(this.config, this.platform, true).then(async (result: SyncResult) => {
                     if (result.result) {
                         this.config.requestRestart()
+                    } else if (result.requiresLocalSshSetup) {
+                        PluginToast.warning(result.message)
                     } else {
                         PluginToast.error(result.message || CloudSyncLang.trans('sync.sync_server_failed'))
                         this.isSettingSaved = false

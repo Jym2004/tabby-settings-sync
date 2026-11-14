@@ -55,6 +55,11 @@ export interface StoredSettings {
     showLoader: boolean,
     interval_insync: number,
     excludedSshBlocksByTarget?: Record<string, Array<{ key: string, lines: string[] }>>,
+    localSshBindings?: Record<string, import('../utils/local-ssh-identity').LocalSshBinding>,
+    pendingSshBindings?: import('../utils/local-ssh-identity').PendingSshBinding[],
+    pendingSshPayload?: string,
+    pendingSshLocalConfig?: string,
+    pendingSshLocalOpenSsh?: string,
     configs: any,
 }
 
@@ -66,4 +71,5 @@ export interface StoredSettings {
 export interface SyncResult {
     result: boolean,
     message: string,
+    requiresLocalSshSetup?: boolean,
 }

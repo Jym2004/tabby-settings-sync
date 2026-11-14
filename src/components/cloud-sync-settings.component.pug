@@ -95,6 +95,28 @@ h3([textContent]='translate.trans("settings.title")')
                                     i.fas.fa-fw.fa-cloud-upload.mr-2
                                     span([textContent]='translate.trans("buttons.upload_settings")')
 
+                    .row(*ngIf='pendingSshBindings.length')
+                        .col-md-12.has-border-top.pt-3.pb-3
+                            .title This device's SSH authentication
+                            p.text-muted Connections are waiting for a local identity. Private keys are never synced. Choose a private key already on this device, or explicitly select SSH agent or password. Authorize your public key on each server, including jump hosts, before connecting.
+                            .form-group
+                                label Connection
+                                select.form-control([(ngModel)]='localSshTarget', [disabled]='bindingSsh')
+                                    option(*ngFor='let item of pendingSshBindings', [value]='item.id') {{item.label}}
+                                    option(value='*') Apply to all waiting connections
+                            .form-group
+                                label Authentication on this device
+                                select.form-control([(ngModel)]='localSshAuth', [disabled]='bindingSsh')
+                                    option(value='publicKey') Private key file
+                                    option(value='agent') SSH agent
+                                    option(value='password') Ask for server password
+                                    option(value='keyboardInteractive') Keyboard interactive
+                            .form-group(*ngIf='localSshAuth === "publicKey"')
+                                label Private key path on this device
+                                input.form-control(type='text', [(ngModel)]='localSshKeyPath', placeholder='Full path to a local private key (not the .pub file)', [disabled]='bindingSsh')
+                            button.btn.btn-primary(type='button', (click)='bindLocalSshIdentity()', [disabled]='bindingSsh || !localSshTarget || (localSshAuth === "publicKey" && !localSshKeyPath.trim())') Save local identity and continue
+                            button.btn.btn-secondary.ml-2(type='button', (click)='cancelLocalSshSetup()', [disabled]='bindingSsh') Cancel pending download
+
                     .row
                         .col-md-12.has-border-top.pt-3(*ngIf='selectedProvider === serviceProviderValues.BUILT_IN')
                             builtin-settings

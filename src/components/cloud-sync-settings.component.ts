@@ -1,5 +1,5 @@
 import { compare as semverCompare, valid as semverValid } from 'semver'
-import { Component, HostBinding, OnInit } from '@angular/core'
+import { Component, HostBinding, OnInit, OnDestroy } from '@angular/core'
 import { ConfigService, PlatformService, BaseComponent } from 'terminus-core'
 import CloudSyncSettingsData from '../data/setting-items'
 import Lang from '../data/lang'
@@ -11,6 +11,8 @@ import PluginToast from '../services/toast'
 import Logger from '../utils/Logger'
 import { CloudSyncActions } from '../providers/cloud-sync-actions'
 import SyncLock from '../utils/sync-lock'
+import { LocalSshBinding, PendingSshBinding, requiresLocalSshSetup } from '../utils/local-ssh-identity'
+import { Subscription } from 'rxjs'
 
 /** @hidden */
 @Component({
@@ -18,7 +20,7 @@ import SyncLock from '../utils/sync-lock'
     styles: [require('./cloud-sync-settings.component.scss')],
 })
 
-export class CloudSyncSettingsComponent extends BaseComponent implements OnInit {
+export class CloudSyncSettingsComponent extends BaseComponent implements OnInit, OnDestroy {
     lastVersion = ''
     translate = Lang
     isUpdateAvailable = false
@@ -42,6 +44,12 @@ export class CloudSyncSettingsComponent extends BaseComponent implements OnInit 
     showEncryptionSecret = false
     showEncryptionSecretConfirmation = false
     recoverySnapshots: string[] = []
+    pendingSshBindings: PendingSshBinding[] = []
+    localSshTarget = ''
+    localSshAuth: LocalSshBinding['auth'] = 'publicKey'
+    localSshKeyPath = ''
+    bindingSsh = false
+    private localSshSubscription: Subscription
 
     @HostBinding('class.content-box') true
     constructor (
@@ -57,6 +65,8 @@ export class CloudSyncSettingsComponent extends BaseComponent implements OnInit 
         await SettingsHelper.loadEncryptionSecret()
         this.hasCustomEncryptionSecret = SettingsHelper.hasCustomEncryptionSecret()
         this.encryptionSecretLoaded = true
+        this.localSshSubscription = SettingsHelper.localSshSetupChanged$.subscribe(() => this.refreshLocalSshSetup())
+        this.refreshLocalSshSetup()
         this.recoverySnapshots = SettingsHelper.listSnapshots(this.platform, 'snapshot')
         this.storedSettingsData = SettingsHelper.readConfigFile(this.platform)
         if (this.storedSettingsData) {
@@ -149,6 +159,44 @@ export class CloudSyncSettingsComponent extends BaseComponent implements OnInit 
     /** Persists the enabled/disabled state of the sync plugin. */
     async toggleEnableSync(): Promise<void> {
         await SettingsHelper.toggleEnabledPlugin(this.syncEnabled, this.platform)
+    }
+
+    ngOnDestroy (): void {
+        this.localSshSubscription?.unsubscribe()
+        super.ngOnDestroy()
+    }
+
+    refreshLocalSshSetup (): void {
+        const saved = SettingsHelper.readConfigFile(this.platform)
+        this.storedSettingsData = saved
+        this.pendingSshBindings = saved?.pendingSshBindings || []
+        if (!this.pendingSshBindings.some(item => item.id === this.localSshTarget)) this.localSshTarget = this.pendingSshBindings[0]?.id || ''
+    }
+
+    async cancelLocalSshSetup (): Promise<void> {
+        if (this.bindingSsh || SyncLock.isLocked) return
+        try { await SyncLock.runExclusive('cancelLocalSshSetup', () => SettingsHelper.cancelPendingSshConnections(this.platform), undefined) }
+        catch (error) { PluginToast.error(error.message) }
+    }
+
+    async bindLocalSshIdentity (): Promise<void> {
+        if (this.bindingSsh || SyncLock.isLocked || this.actions.isTabbySyncActive) return
+        const ids = this.localSshTarget === '*'
+            ? this.pendingSshBindings.map(item => item.id)
+            : [this.localSshTarget]
+        this.bindingSsh = true
+        try {
+            const binding: LocalSshBinding = { auth: this.localSshAuth }
+            if (binding.auth === 'publicKey') binding.privateKeys = [this.localSshKeyPath.trim()]
+            await SyncLock.runExclusive('bindLocalSshIdentity', () => SettingsHelper.bindPendingSshConnections(this.config, this.platform, binding, ids), undefined)
+            PluginToast.success('Local SSH identities saved and downloaded connections applied. Authorize this device\'s public key on the servers before connecting.')
+        } catch (error) {
+            if (requiresLocalSshSetup(error)) PluginToast.warning(error.message)
+            else PluginToast.error(error.message || 'Could not save this device\'s SSH identity.')
+        } finally {
+            this.bindingSsh = false
+            this.refreshLocalSshSetup()
+        }
     }
 
     get canSyncManually (): boolean {
